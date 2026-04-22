@@ -476,7 +476,7 @@
 
   @available(macOS 26.0, iOS 26.0, watchOS 26.0, tvOS 26.0, visionOS 26.0, *)
   extension FoundationModels.GenerationSchema {
-    internal init(_ content: AnyLanguageModel.GenerationSchema) {
+    internal init(_ content: GenerationSchema) {
       let resolvedSchema = content.withResolvedRoot() ?? content
 
       // Convert the GenerationSchema into a DynamicGenerationSchema, preserving $defs
@@ -524,13 +524,13 @@
 
   @available(macOS 26.0, iOS 26.0, watchOS 26.0, tvOS 26.0, visionOS 26.0, *)
   extension FoundationModels.GeneratedContent {
-    internal init(_ content: AnyLanguageModel.GeneratedContent) throws {
+    internal init(_ content: GeneratedContent) throws {
       try self.init(json: content.jsonString)
     }
   }
 
   @available(macOS 26.0, iOS 26.0, watchOS 26.0, tvOS 26.0, visionOS 26.0, *)
-  extension AnyLanguageModel.GeneratedContent {
+  extension GeneratedContent {
     internal init(_ content: FoundationModels.GeneratedContent) throws {
       try self.init(json: content.jsonString)
     }
@@ -667,7 +667,7 @@
   @available(macOS 26.0, iOS 26.0, watchOS 26.0, tvOS 26.0, visionOS 26.0, *)
   extension Transcript {
     fileprivate func toFoundationModels(
-      instructions: AnyLanguageModel.Instructions?,
+      instructions: SwiftAIHub.Instructions?,
       toolDefinitions: [Transcript.ToolDefinition]
     ) -> FoundationModels.Transcript {
       var fmEntries: [FoundationModels.Transcript.Entry] = []
