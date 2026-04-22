@@ -41,90 +41,92 @@
 /// you don't want to reuse between tool calls.
 public protocol Tool<Arguments, Output>: Sendable {
 
-    /// The output that this tool produces for the language model to reason about in subsequent
-    /// interactions.
-    ///
-    /// Typically output is either a ``String`` or a ``Generable`` type.
-    associatedtype Output: PromptRepresentable
+  /// The output that this tool produces for the language model to reason about in subsequent
+  /// interactions.
+  ///
+  /// Typically output is either a ``String`` or a ``Generable`` type.
+  associatedtype Output: PromptRepresentable
 
-    /// The arguments that this tool should accept.
-    ///
-    /// Typically arguments are either a ``Generable`` type or ``GeneratedContent``.
-    associatedtype Arguments: ConvertibleFromGeneratedContent
+  /// The arguments that this tool should accept.
+  ///
+  /// Typically arguments are either a ``Generable`` type or ``GeneratedContent``.
+  associatedtype Arguments: ConvertibleFromGeneratedContent
 
-    /// A unique name for the tool, such as "get_weather", "toggleDarkMode", or "search contacts".
-    var name: String { get }
+  /// A unique name for the tool, such as "get_weather", "toggleDarkMode", or "search contacts".
+  var name: String { get }
 
-    /// A natural language description of when and how to use the tool.
-    var description: String { get }
+  /// A natural language description of when and how to use the tool.
+  var description: String { get }
 
-    /// A schema for the parameters this tool accepts.
-    var parameters: GenerationSchema { get }
+  /// A schema for the parameters this tool accepts.
+  var parameters: GenerationSchema { get }
 
-    /// If true, the model's name, description, and parameters schema will be injected
-    /// into the instructions of sessions that leverage this tool.
-    ///
-    /// The default implementation is `true`
-    ///
-    /// - Note: This should only be `false` if the model has been trained to have
-    /// innate knowledge of this tool. For zero-shot prompting, it should always be `true`.
-    var includesSchemaInInstructions: Bool { get }
+  /// If true, the model's name, description, and parameters schema will be injected
+  /// into the instructions of sessions that leverage this tool.
+  ///
+  /// The default implementation is `true`
+  ///
+  /// - Note: This should only be `false` if the model has been trained to have
+  /// innate knowledge of this tool. For zero-shot prompting, it should always be `true`.
+  var includesSchemaInInstructions: Bool { get }
 
-    /// A language model will call this method when it wants to leverage this tool.
-    ///
-    /// If errors are throw in the body of this method, they will be wrapped in a
-    /// ``LanguageModelSession.ToolCallError`` and rethrown at the call site
-    /// of ``LanguageModelSession.respond(to:)``.
-    ///
-    /// - Note: This method may be invoked concurrently with itself or with other tools.
-    func call(arguments: Self.Arguments) async throws -> Self.Output
+  /// A language model will call this method when it wants to leverage this tool.
+  ///
+  /// If errors are throw in the body of this method, they will be wrapped in a
+  /// ``LanguageModelSession.ToolCallError`` and rethrown at the call site
+  /// of ``LanguageModelSession.respond(to:)``.
+  ///
+  /// - Note: This method may be invoked concurrently with itself or with other tools.
+  func call(arguments: Self.Arguments) async throws -> Self.Output
 }
 
 // MARK: - Default Implementations
 
 extension Tool {
-    /// A unique name for the tool, such as "get_weather", "toggleDarkMode", or "search contacts".
-    public var name: String {
-        String(describing: Self.self)
-    }
+  /// A unique name for the tool, such as "get_weather", "toggleDarkMode", or "search contacts".
+  public var name: String {
+    String(describing: Self.self)
+  }
 
-    /// If true, the model's name, description, and parameters schema will be injected
-    /// into the instructions of sessions that leverage this tool.
-    ///
-    /// The default implementation is `true`
-    ///
-    /// - Note: This should only be `false` if the model has been trained to have
-    /// innate knowledge of this tool. For zero-shot prompting, it should always be `true`.
-    public var includesSchemaInInstructions: Bool {
-        true
-    }
+  /// If true, the model's name, description, and parameters schema will be injected
+  /// into the instructions of sessions that leverage this tool.
+  ///
+  /// The default implementation is `true`
+  ///
+  /// - Note: This should only be `false` if the model has been trained to have
+  /// innate knowledge of this tool. For zero-shot prompting, it should always be `true`.
+  public var includesSchemaInInstructions: Bool {
+    true
+  }
 }
 
 extension Tool where Self.Arguments: Generable {
-    /// A schema for the parameters this tool accepts.
-    public var parameters: GenerationSchema {
-        Arguments.generationSchema
-    }
+  /// A schema for the parameters this tool accepts.
+  public var parameters: GenerationSchema {
+    Arguments.generationSchema
+  }
 }
 
 // MARK: - Helpers
 
 extension Tool {
-    internal func makeOutputSegments(from arguments: GeneratedContent) async throws -> [Transcript.Segment] {
-        let parsedArguments = try Arguments(arguments)
-        let output = try await call(arguments: parsedArguments)
+  public func makeOutputSegments(from arguments: GeneratedContent) async throws -> [Transcript
+    .Segment]
+  {
+    let parsedArguments = try Arguments(arguments)
+    let output = try await call(arguments: parsedArguments)
 
-        if let structured = output as? any ConvertibleToGeneratedContent {
-            let content = structured.generatedContent
-            let segment = Transcript.Segment.structure(.init(source: name, content: content))
-            return [segment]
-        }
-
-        if let stringOutput = output as? String {
-            return [Transcript.Segment.text(.init(content: stringOutput))]
-        }
-
-        let fallback = output.promptRepresentation.description
-        return [Transcript.Segment.text(.init(content: fallback))]
+    if let structured = output as? any ConvertibleToGeneratedContent {
+      let content = structured.generatedContent
+      let segment = Transcript.Segment.structure(.init(source: name, content: content))
+      return [segment]
     }
+
+    if let stringOutput = output as? String {
+      return [Transcript.Segment.text(.init(content: stringOutput))]
+    }
+
+    let fallback = output.promptRepresentation.description
+    return [Transcript.Segment.text(.init(content: fallback))]
+  }
 }
