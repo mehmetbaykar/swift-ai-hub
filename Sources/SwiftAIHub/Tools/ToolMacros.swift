@@ -17,8 +17,8 @@
 @attached(
   member,
   names: named(name), named(description), named(parameters),
-  named(init), named(execute), named(_userExecute),
-  named(Input), named(Output)
+  named(init), named(call), named(schema),
+  named(Arguments), named(Output)
 )
 @attached(extension, conformances: Tool, Sendable)
 public macro Tool(_ description: String) =
