@@ -44,3 +44,47 @@ struct PaintTool {
   let out = try await tool.call(arguments: args)
   #expect(out == "green")
 }
+
+// MARK: - Required non-primitive @Parameter without placeholder default
+
+@Generable
+struct Box {
+  @Guide(description: "side length in mm") var side: Int
+}
+
+// NO DEFAULT on `box` — must compile.
+@Tool("Measure a box")
+struct MeasureBoxTool {
+  @Parameter("The box to measure")
+  var box: Box
+
+  func execute() async throws -> Int { box.side }
+}
+
+@Test func measureBoxSchemaMarksBoxRequired() {
+  let params = MeasureBoxTool.schema.parameters
+  #expect(params.contains { $0.name == "box" && $0.isRequired })
+}
+
+@Test func measureBoxDispatchDecodesNestedGenerable() async throws {
+  // Memberwise init — macro no longer synthesises `public init()` when a
+  // required @Parameter has no safe zero literal.
+  let tool = MeasureBoxTool(box: Box(side: 0))
+  let args = try MeasureBoxTool.Arguments(
+    GeneratedContent(
+      kind: .structure(
+        properties: [
+          "box": GeneratedContent(
+            kind: .structure(
+              properties: ["side": GeneratedContent(kind: .number(42))],
+              orderedKeys: ["side"]
+            )
+          )
+        ],
+        orderedKeys: ["box"]
+      )
+    )
+  )
+  let out = try await tool.call(arguments: args)
+  #expect(out == 42)
+}

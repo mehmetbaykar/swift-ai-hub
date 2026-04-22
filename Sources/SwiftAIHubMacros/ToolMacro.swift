@@ -40,7 +40,7 @@ public struct ToolMacro: MemberMacro, ExtensionMacro {
     members.append(
       generateSchemaProperty(toolName: toolName, description: description, parameters: parameters))
 
-    if !hasInit(in: declaration) {
+    if !hasInit(in: declaration) && canEmitDefaultInit(parameters: parameters) {
       members.append(generateDefaultInit(parameters: parameters))
     }
 
@@ -317,6 +317,27 @@ public struct ToolMacro: MemberMacro, ExtensionMacro {
       return base + "?"
     }
     return base
+  }
+
+  /// `public init()` requires a value for every stored property, so we can
+  /// only emit one when every @Parameter has a usable zero literal — either a
+  /// user-supplied default, an explicit Optional (nil), or a primitive/array
+  /// type. Required non-primitive types (e.g. nested @Generable structs) have
+  /// no safe zero, so we skip the init and rely on the user's own init or the
+  /// synthesized memberwise init.
+  private static func canEmitDefaultInit(parameters: [ParameterInfo]) -> Bool {
+    for param in parameters {
+      if param.defaultValue != nil { continue }
+      if param.swiftType.hasSuffix("?") { continue }
+      if param.isOptional { continue }
+      let trimmed = param.swiftType.trimmingCharacters(in: .whitespaces)
+      if trimmed.hasPrefix("[") && trimmed.hasSuffix("]") { continue }
+      switch baseSwiftType(trimmed) {
+      case "String", "Int", "Double", "Float", "Bool": continue
+      default: return false
+      }
+    }
+    return true
   }
 
   private static func generateFieldExtraction(_ param: ParameterInfo) -> String {
