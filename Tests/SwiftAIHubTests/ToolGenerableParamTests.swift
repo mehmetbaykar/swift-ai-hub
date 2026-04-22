@@ -8,7 +8,7 @@ import Testing
 @testable import SwiftAIHub
 
 @Generable
-enum Color: String, CaseIterable, Codable, Sendable {
+enum Color: String, CaseIterable {
   case red, green, blue
 }
 
