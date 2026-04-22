@@ -723,17 +723,6 @@ import Foundation
       )
     }
 
-    private static func maxToolIterationsExceededError(limit: Int)
-      -> LanguageModelSession.GenerationError
-    {
-      .decodingFailure(
-        .init(
-          debugDescription:
-            "Exceeded maximum tool iterations (\(limit)) while processing MLX tool calls."
-        )
-      )
-    }
-
     private static func repeatedToolCallLoopError() -> LanguageModelSession.GenerationError {
       .decodingFailure(
         .init(
@@ -917,7 +906,7 @@ import Foundation
       var allTextChunks: [String] = []
       var allEntries: [Transcript.Entry] = []
       let maxToolIterations = session.maxToolCallRounds
-      var toolIteration = 0
+      var round = 0
       var previousToolCallSignature: String?
 
       // Loop until no more tool calls
@@ -975,11 +964,11 @@ import Foundation
 
         // If there are tool calls, execute them and continue
         if !collectedToolCalls.isEmpty {
-          toolIteration += 1
-          if toolIteration > maxToolIterations {
+          round += 1
+          if round > maxToolIterations {
             let unresolvedCalls = try makeTranscriptToolCalls(from: collectedToolCalls)
             allEntries.append(Transcript.Entry.toolCalls(Transcript.ToolCalls(unresolvedCalls)))
-            throw Self.maxToolIterationsExceededError(limit: maxToolIterations)
+            throw LanguageModelSession.ToolCallLoopExceeded(rounds: round)
           }
 
           let signature =
