@@ -26,6 +26,7 @@ let package = Package(
     .package(url: "https://github.com/apple/swift-log.git", from: "1.5.0"),
     .package(url: "https://github.com/apple/swift-collections.git", from: "1.1.0"),
     .package(url: "https://github.com/mattt/JSONSchema.git", from: "1.3.0"),
+    .package(url: "https://github.com/mattt/EventSource.git", from: "1.3.0"),
   ],
   targets: [
     .macro(
@@ -44,6 +45,7 @@ let package = Package(
         .product(name: "Logging", package: "swift-log"),
         .product(name: "Collections", package: "swift-collections"),
         .product(name: "JSONSchema", package: "JSONSchema"),
+        .product(name: "EventSource", package: "EventSource"),
       ]
     ),
     .testTarget(
