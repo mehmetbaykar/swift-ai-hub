@@ -1,0 +1,17 @@
+swift-ai-hub
+Copyright (c) 2026 Mehmet Baykar
+
+This product includes software developed at:
+
+- Hugging Face SAS — AnyLanguageModel (Apache-2.0).
+  Primary source for LanguageModel protocol, LanguageModelSession,
+  Tool protocol, Generable/Guide macros, and providers: OpenAI, Anthropic,
+  Gemini, MLX, CoreML, Llama, Ollama, OpenResponses, SystemLanguageModel.
+  https://github.com/huggingface/AnyLanguageModel
+
+- Christopher Karani — Conduit (MIT) and Swarm (MIT).
+  Conduit: source for providers HuggingFace, Kimi, MiniMax;
+  URLSessionAsyncBytes + SSEParser utilities; reference for the default
+  tool-execution policy.
+  Swarm: source for the @Tool / @Parameter macro design and the
+  SwarmMCP module shape (mirrored by FastMCPAIBridge in swift-fast-mcp).
