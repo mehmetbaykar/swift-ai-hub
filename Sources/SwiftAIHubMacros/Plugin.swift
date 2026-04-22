@@ -10,5 +10,7 @@ struct SwiftAIHubMacrosPlugin: CompilerPlugin {
   let providingMacros: [any Macro.Type] = [
     GenerableMacro.self,
     GuideMacro.self,
+    ToolMacro.self,
+    ParameterMacro.self,
   ]
 }
