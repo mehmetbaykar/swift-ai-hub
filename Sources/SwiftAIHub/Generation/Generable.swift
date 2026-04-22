@@ -51,7 +51,8 @@ public enum GeneratedContentConversionError: Error {
 ///         such as `#Playground`.
 ///         As a workaround, use the `init(_ generatedContent:)` initializer
 ///         or define a factory method on the type.
-@attached(extension, conformances: Generable, names: named(init(_:)), named(generatedContent))
+@attached(
+  extension, conformances: Generable, Codable, names: named(init(_:)), named(generatedContent))
 @attached(member, names: arbitrary)
 public macro Generable(description: String? = nil) =
   #externalMacro(module: "SwiftAIHubMacros", type: "GenerableMacro")
