@@ -916,7 +916,7 @@ import Foundation
 
       var allTextChunks: [String] = []
       var allEntries: [Transcript.Entry] = []
-      let maxToolIterations = 8
+      let maxToolIterations = session.maxToolCallRounds
       var toolIteration = 0
       var previousToolCallSignature: String?
 
