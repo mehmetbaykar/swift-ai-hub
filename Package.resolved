@@ -1,6 +1,15 @@
 {
-  "originHash" : "2442c03c7a20ae5ed521d10f75fab4e58808625470830307a59bc95665d5f5a0",
+  "originHash" : "349e9bf697c77c7abb921bb7c940a29cb56ebdbc7f50f1e410f024738665bbf9",
   "pins" : [
+    {
+      "identity" : "jsonschema",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/mattt/JSONSchema.git",
+      "state" : {
+        "revision" : "4c6f2467d5bc72b062c7a9b7e4cd77a09635ea8b",
+        "version" : "1.3.1"
+      }
+    },
     {
       "identity" : "swift-collections",
       "kind" : "remoteSourceControl",
