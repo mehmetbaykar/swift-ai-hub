@@ -825,6 +825,19 @@ extension LanguageModelSession {
 
     public var errorDescription: String? { nil }
   }
+
+  /// Thrown when a provider's tool-call loop reaches `maxToolCallRounds`.
+  public struct ToolCallLoopExceeded: Error, LocalizedError {
+    public let rounds: Int
+
+    public init(rounds: Int) {
+      self.rounds = rounds
+    }
+
+    public var errorDescription: String? {
+      "Exceeded \(rounds) tool-call round(s) without a final response."
+    }
+  }
 }
 
 extension LanguageModelSession {
