@@ -8,38 +8,31 @@
 
 /// Generates a tool conforming to `Tool`, `Sendable` from a struct.
 ///
-/// Stored properties annotated with `@Parameter` become the LLM-visible
-/// argument schema. Plain stored properties are ignored by the macro —
-/// use them for init-injected dependencies (API keys, `any LanguageModel`, etc.).
-///
-/// The user writes a zero-arg `execute()`; the macro synthesises the typed
-/// wrapper and the dynamic-dispatch entry used by bridges.
+/// The user writes a nested `@Generable struct Arguments { … }` whose fields
+/// are the LLM-visible argument schema, annotated with `@Parameter` or
+/// `@Guide` for descriptions, and an
+/// `execute(_ arguments: Arguments) async throws -> Output` method. Plain
+/// stored properties on the tool struct (without `@Parameter`/`@Guide`) are
+/// init-injected dependencies — API keys, `any LanguageModel`, etc.
 @attached(
   member,
   names: named(name), named(description), named(parameters),
   named(init), named(call), named(schema),
-  named(Arguments), named(Output)
+  named(Output)
 )
 @attached(extension, conformances: Tool, Sendable)
 public macro Tool(_ description: String) =
   #externalMacro(module: "SwiftAIHubMacros", type: "ToolMacro")
 
-/// Marks a stored property as an LLM-visible tool parameter.
+/// Marks a property of a nested `Arguments` struct as an LLM-visible tool
+/// parameter. Equivalent to `@Guide(description:)` — `@Tool`'s nested
+/// `@Generable struct Arguments` reads it as the field description.
 ///
-///     @Parameter("The city name")
-///     var location: String
-///
-///     @Parameter("Temperature units", default: "celsius")
-///     var units: String = "celsius"
-///
-///     @Parameter("Output format", oneOf: ["json", "xml", "text"])
-///     var format: String
-///
-/// The macro is a marker: it emits no peer code. `@Tool` reads these
-/// attributes at expansion time to build the parameter schema.
+///     @Generable
+///     struct Arguments {
+///         @Parameter("The city name")
+///         var location: String
+///     }
 @attached(peer)
-public macro Parameter(
-  _ description: String,
-  default defaultValue: Any? = nil,
-  oneOf options: [String]? = nil
-) = #externalMacro(module: "SwiftAIHubMacros", type: "ParameterMacro")
+public macro Parameter(_ description: String) =
+  #externalMacro(module: "SwiftAIHubMacros", type: "ParameterMacro")
