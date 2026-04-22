@@ -1,7 +1,7 @@
 // swift-ai-hub — Apache-2.0
-// Proves that stored properties without @Parameter survive @Tool macro
-// dispatch: they act as init-injected dependencies and are not overwritten
-// when call(arguments:) copies the struct before invoking execute().
+// Proves that stored dependency properties on the tool struct (without any
+// @Parameter/@Guide annotation) survive @Tool macro dispatch: they act as
+// init-injected dependencies and remain accessible to `execute(_:)`.
 
 import Testing
 
@@ -18,25 +18,27 @@ actor InMemorySink: EchoSink {
 
 @Tool("Echo with DI")
 struct EchoWithSinkTool {
-  @Parameter("message")
-  var msg: String
+  @Generable
+  struct Arguments {
+    @Parameter("message")
+    var msg: String
+  }
 
   let sink: any EchoSink
 
-  init(msg: String = "", sink: any EchoSink) {
-    self.msg = msg
+  init(sink: any EchoSink) {
     self.sink = sink
   }
 
-  func execute() async throws -> String {
-    await sink.record(msg)
-    return msg
+  func execute(_ arguments: Arguments) async throws -> String {
+    await sink.record(arguments.msg)
+    return arguments.msg
   }
 }
 
 @Test func echoToolDIFieldSurvivesDispatch() async throws {
   let sink = InMemorySink()
-  let tool = EchoWithSinkTool(msg: "", sink: sink)
+  let tool = EchoWithSinkTool(sink: sink)
   let args = try EchoWithSinkTool.Arguments(
     GeneratedContent(
       kind: .structure(

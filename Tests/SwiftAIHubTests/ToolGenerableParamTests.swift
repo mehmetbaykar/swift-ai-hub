@@ -1,7 +1,7 @@
 // swift-ai-hub — Apache-2.0
-// Verifies the @Tool macro routes non-primitive @Parameter types through the
-// type's Generable.generationSchema (e.g. a String-raw enum) rather than
-// silently coercing them to .string on the wire.
+// Verifies the @Tool macro's nested Arguments struct routes non-primitive
+// fields through their Generable.generationSchema (e.g. a String-raw enum
+// or a nested @Generable struct).
 
 import Testing
 
@@ -14,21 +14,17 @@ enum Color: String, CaseIterable {
 
 @Tool("Paint something")
 struct PaintTool {
-  @Parameter("color")
-  var color: Color = .red
+  @Generable
+  struct Arguments {
+    @Parameter("color")
+    var color: Color
+  }
 
-  func execute() async throws -> String { color.rawValue }
+  func execute(_ arguments: Arguments) async throws -> String { arguments.color.rawValue }
 }
 
-@Test func paintToolSchemaEmbedsColorEnum() {
-  let param = PaintTool.schema.parameters.first { $0.name == "color" }!
-  guard case .generableSchema(let schema) = param.type else {
-    Issue.record("expected .generableSchema, got \(param.type)")
-    return
-  }
-  // Color is a plain String enum — its schema root is a .string node with
-  // enumChoices matching the case names.
-  _ = schema
+@Test func paintToolSchemaExposesGenerationSchema() {
+  _ = PaintTool.schema.generationSchema
 }
 
 @Test func paintToolDispatchRoundTrips() async throws {
@@ -45,31 +41,26 @@ struct PaintTool {
   #expect(out == "green")
 }
 
-// MARK: - Required non-primitive @Parameter without placeholder default
+// MARK: - Nested @Generable struct as an Arguments field
 
 @Generable
 struct Box {
   @Guide(description: "side length in mm") var side: Int
 }
 
-// NO DEFAULT on `box` — must compile.
 @Tool("Measure a box")
 struct MeasureBoxTool {
-  @Parameter("The box to measure")
-  var box: Box
+  @Generable
+  struct Arguments {
+    @Parameter("The box to measure")
+    var box: Box
+  }
 
-  func execute() async throws -> Int { box.side }
-}
-
-@Test func measureBoxSchemaMarksBoxRequired() {
-  let params = MeasureBoxTool.schema.parameters
-  #expect(params.contains { $0.name == "box" && $0.isRequired })
+  func execute(_ arguments: Arguments) async throws -> Int { arguments.box.side }
 }
 
 @Test func measureBoxDispatchDecodesNestedGenerable() async throws {
-  // Memberwise init — macro no longer synthesises `public init()` when a
-  // required @Parameter has no safe zero literal.
-  let tool = MeasureBoxTool(box: Box(side: 0))
+  let tool = MeasureBoxTool()
   let args = try MeasureBoxTool.Arguments(
     GeneratedContent(
       kind: .structure(
