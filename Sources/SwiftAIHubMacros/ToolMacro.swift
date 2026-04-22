@@ -410,8 +410,10 @@ public struct ToolMacro: MemberMacro, ExtensionMacro {
     case "Double", "Float": return "SwiftAIHub.ParameterType.number"
     case "Bool": return "SwiftAIHub.ParameterType.boolean"
     default:
-      // Unknown — fall back to string on the wire.
-      return "SwiftAIHub.ParameterType.string"
+      // Non-primitive: delegate to the type's `Generable.generationSchema`.
+      // If the type does not conform to `Generable`, the user sees a clear
+      // compile error at the emitted reference site.
+      return "SwiftAIHub.ParameterType.generableSchema(\(cleanType).generationSchema)"
     }
   }
 
