@@ -7,5 +7,8 @@ import SwiftSyntaxMacros
 
 @main
 struct SwiftAIHubMacrosPlugin: CompilerPlugin {
-  let providingMacros: [any Macro.Type] = []
+  let providingMacros: [any Macro.Type] = [
+    GenerableMacro.self,
+    GuideMacro.self,
+  ]
 }
