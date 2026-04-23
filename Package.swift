@@ -20,6 +20,10 @@ let package = Package(
     .trait(name: "Llama", description: "Enable llama.cpp provider"),
     .trait(
       name: "FoundationModels", description: "Enable Apple FoundationModels / SystemLanguageModel"),
+    .trait(
+      name: "AsyncHTTP",
+      description:
+        "Opt-in to AsyncHTTPClient-based transport; default is URLSession only. Off by default."),
   ],
   dependencies: [
     .package(url: "https://github.com/swiftlang/swift-syntax.git", from: "600.0.0"),
@@ -31,6 +35,7 @@ let package = Package(
     .package(url: "https://github.com/huggingface/swift-transformers", from: "1.0.0"),
     .package(url: "https://github.com/mattt/llama.swift", .upToNextMajor(from: "2.7484.0")),
     .package(url: "https://github.com/mattt/PartialJSONDecoder", from: "1.0.0"),
+    .package(url: "https://github.com/swift-server/async-http-client.git", from: "1.24.0"),
   ],
   targets: [
     .macro(
@@ -62,12 +67,16 @@ let package = Package(
         .product(
           name: "PartialJSONDecoder", package: "PartialJSONDecoder",
           condition: .when(traits: ["FoundationModels"])),
+        .product(
+          name: "AsyncHTTPClient", package: "async-http-client",
+          condition: .when(traits: ["AsyncHTTP"])),
       ],
       swiftSettings: [
         .define("MLX", .when(traits: ["MLX"])),
         .define("CoreML", .when(traits: ["CoreML"])),
         .define("Llama", .when(traits: ["Llama"])),
         .define("FoundationModels", .when(traits: ["FoundationModels"])),
+        .define("HUB_USE_ASYNC_HTTP", .when(traits: ["AsyncHTTP"])),
       ]
     ),
     .testTarget(
