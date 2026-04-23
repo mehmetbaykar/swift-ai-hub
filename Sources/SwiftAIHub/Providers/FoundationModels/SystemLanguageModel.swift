@@ -1,3 +1,8 @@
+// swift-ai-hub — Apache-2.0
+//
+// Portions of this file are ported from Apple/HuggingFace AnyLanguageModel (Apache-2.0).
+// See NOTICE for attribution.
+
 #if FoundationModels && canImport(FoundationModels)
   import FoundationModels
   import Foundation
