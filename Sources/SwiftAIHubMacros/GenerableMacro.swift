@@ -70,16 +70,40 @@ public struct GenerableMacro: MemberMacro, ExtensionMacro {
     conformingTo protocols: [TypeSyntax],
     in context: some MacroExpansionContext
   ) throws -> [ExtensionDeclSyntax] {
+    // `protocols` contains only the conformances Swift expects the macro to
+    // supply — protocols the user already wrote on the type are excluded.
+    // If the list is empty, both `Generable` and `Codable` are already present
+    // on the declaration and we must not emit a duplicate conformance.
+    //
+    // Fall back to the historical behaviour (emit `: Generable`) when the
+    // compiler does not populate `protocols`, but otherwise emit exactly the
+    // conformances the compiler asked for, combined into a single extension
+    // to keep diagnostics clean.
     let nonisolatedModifier = DeclModifierSyntax(name: .keyword(.nonisolated))
+
+    let conformancesToEmit: [String]
+    if protocols.isEmpty {
+      return []
+    } else {
+      conformancesToEmit = protocols.map { proto in
+        proto.trimmedDescription
+      }
+    }
+
+    let inheritedTypes = InheritedTypeListSyntax(
+      conformancesToEmit.enumerated().map { index, name in
+        var inherited = InheritedTypeSyntax(type: TypeSyntax(stringLiteral: name))
+        if index < conformancesToEmit.count - 1 {
+          inherited.trailingComma = .commaToken()
+        }
+        return inherited
+      }
+    )
 
     let extensionDecl = ExtensionDeclSyntax(
       modifiers: DeclModifierListSyntax([nonisolatedModifier]),
       extendedType: type,
-      inheritanceClause: InheritanceClauseSyntax(
-        inheritedTypes: InheritedTypeListSyntax([
-          InheritedTypeSyntax(type: TypeSyntax(stringLiteral: "Generable"))
-        ])
-      ),
+      inheritanceClause: InheritanceClauseSyntax(inheritedTypes: inheritedTypes),
       memberBlock: MemberBlockSyntax(members: [])
     )
     return [extensionDecl]
