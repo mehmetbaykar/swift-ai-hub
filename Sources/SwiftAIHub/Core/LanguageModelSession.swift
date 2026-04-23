@@ -172,9 +172,26 @@ public final class LanguageModelSession: @unchecked Sendable {
     promptEntry: Transcript.Entry
   ) -> ResponseStream<Content> where Content: Generable, Content.PartiallyGenerated: Sendable {
     let session = self
+    // Idempotent cleanup guard: whichever path finishes first (normal end of
+    // the producer Task, or `onTermination` when the consumer cancels / drops
+    // the stream) runs `endResponding()` + `release()` exactly once. Without
+    // this, a mid-stream cancel would leak `isRespondingCount` and hold the
+    // gate forever.
+    let cleanupDone = Locked<Bool>(false)
+    @Sendable func cleanupOnce() async {
+      let shouldRun = cleanupDone.withLock { done -> Bool in
+        guard !done else { return false }
+        done = true
+        return true
+      }
+      guard shouldRun else { return }
+      session.endResponding()
+      await session.respondGate.release()
+    }
+
     let relay = AsyncThrowingStream<ResponseStream<Content>.Snapshot, any Error> { continuation in
       let stream = upstream
-      Task {
+      let producer = Task {
         await session.respondGate.acquire()
         session.beginResponding()
         var lastSnapshot: ResponseStream<Content>.Snapshot?
@@ -208,8 +225,11 @@ public final class LanguageModelSession: @unchecked Sendable {
         } catch {
           continuation.finish(throwing: error)
         }
-        session.endResponding()
-        await session.respondGate.release()
+        await cleanupOnce()
+      }
+      continuation.onTermination = { @Sendable _ in
+        producer.cancel()
+        Task { await cleanupOnce() }
       }
     }
     return ResponseStream(stream: relay)
