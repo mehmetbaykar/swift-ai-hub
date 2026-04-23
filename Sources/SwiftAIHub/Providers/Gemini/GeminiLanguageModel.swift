@@ -1041,13 +1041,23 @@ private struct GeminiUsageMetadata: Codable, Sendable {
   }
 }
 
-enum GeminiError: Error, CustomStringConvertible {
+public enum GeminiError: Error, CustomStringConvertible, Sendable {
   case noCandidate
 
-  var description: String {
+  public var description: String {
     switch self {
     case .noCandidate:
       return "No candidate in response"
     }
   }
+}
+
+extension GeminiError: LanguageModelError {
+  public var httpStatus: Int? { nil }
+
+  public var providerMessage: String {
+    redactSensitiveHeaders(description)
+  }
+
+  public var isRetryable: Bool { false }
 }

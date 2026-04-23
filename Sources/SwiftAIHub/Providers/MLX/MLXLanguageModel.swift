@@ -1616,7 +1616,7 @@ import Foundation
   // MARK: - Structured JSON Generation
 
   /// Errors that can occur when using MLXLanguageModel.
-  public enum MLXLanguageModelError: Error, LocalizedError {
+  public enum MLXLanguageModelError: Error, LocalizedError, Sendable {
     case invalidVocabSize
     case unsupportedJSONValueType
 
@@ -1628,6 +1628,18 @@ import Foundation
         return "Unsupported JSON value type for schema conversion"
       }
     }
+  }
+
+  extension MLXLanguageModelError: LanguageModelError {
+    public var httpStatus: Int? { nil }
+
+    public var providerMessage: String {
+      redactSensitiveHeaders(errorDescription ?? String(describing: self))
+    }
+
+    public var isRetryable: Bool { false }
+
+    public var description: String { providerMessage }
   }
 
   private func generateStructuredJSON(
