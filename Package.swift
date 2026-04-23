@@ -56,26 +56,45 @@ let package = Package(
         .product(name: "Collections", package: "swift-collections"),
         .product(name: "JSONSchema", package: "JSONSchema"),
         .product(name: "EventSource", package: "EventSource"),
-        .product(name: "MLXLLM", package: "mlx-swift-lm", condition: .when(traits: ["MLX"])),
-        .product(name: "MLXVLM", package: "mlx-swift-lm", condition: .when(traits: ["MLX"])),
-        .product(name: "MLXLMCommon", package: "mlx-swift-lm", condition: .when(traits: ["MLX"])),
+        .product(
+          name: "MLXLLM", package: "mlx-swift-lm",
+          condition: .when(
+            platforms: [.macOS, .iOS, .tvOS, .watchOS, .visionOS], traits: ["MLX"])),
+        .product(
+          name: "MLXVLM", package: "mlx-swift-lm",
+          condition: .when(
+            platforms: [.macOS, .iOS, .tvOS, .watchOS, .visionOS], traits: ["MLX"])),
+        .product(
+          name: "MLXLMCommon", package: "mlx-swift-lm",
+          condition: .when(
+            platforms: [.macOS, .iOS, .tvOS, .watchOS, .visionOS], traits: ["MLX"])),
         .product(
           name: "Transformers", package: "swift-transformers",
-          condition: .when(traits: ["CoreML"])),
+          condition: .when(
+            platforms: [.macOS, .iOS, .tvOS, .watchOS, .visionOS], traits: ["CoreML"])),
         .product(
           name: "LlamaSwift", package: "llama.swift", condition: .when(traits: ["Llama"])),
         .product(
           name: "PartialJSONDecoder", package: "PartialJSONDecoder",
-          condition: .when(traits: ["FoundationModels"])),
+          condition: .when(
+            platforms: [.macOS, .iOS, .tvOS, .watchOS, .visionOS],
+            traits: ["FoundationModels"])),
         .product(
           name: "AsyncHTTPClient", package: "async-http-client",
           condition: .when(traits: ["AsyncHTTP"])),
       ],
       swiftSettings: [
-        .define("MLX", .when(traits: ["MLX"])),
-        .define("CoreML", .when(traits: ["CoreML"])),
+        .define(
+          "MLX",
+          .when(platforms: [.macOS, .iOS, .tvOS, .watchOS, .visionOS], traits: ["MLX"])),
+        .define(
+          "CoreML",
+          .when(platforms: [.macOS, .iOS, .tvOS, .watchOS, .visionOS], traits: ["CoreML"])),
         .define("Llama", .when(traits: ["Llama"])),
-        .define("FoundationModels", .when(traits: ["FoundationModels"])),
+        .define(
+          "FoundationModels",
+          .when(
+            platforms: [.macOS, .iOS, .tvOS, .watchOS, .visionOS], traits: ["FoundationModels"])),
         .define("HUB_USE_ASYNC_HTTP", .when(traits: ["AsyncHTTP"])),
       ]
     ),
