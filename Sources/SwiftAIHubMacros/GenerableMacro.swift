@@ -1306,13 +1306,11 @@ public struct GenerableMacro: MemberMacro, ExtensionMacro {
                 ])
             """
         } else if enumCase.isSingleUnlabeledValue {
-          return """
-            case .\\(enumCase.name)(let value):
-                return GeneratedContent(properties: [
-                    "case": GeneratedContent("\\(enumCase.name)"),
-                    "value": GeneratedContent("\\\\(value)")
-                ])
-            """
+          let valueType = enumCase.associatedValues[0].type
+          return generateSingleValueSerialization(
+            caseName: enumCase.name,
+            valueType: valueType
+          )
         } else {
           return generateMultipleValueSerialization(
             caseName: enumCase.name,
@@ -1350,24 +1348,16 @@ public struct GenerableMacro: MemberMacro, ExtensionMacro {
   private static func generateSingleValueSerialization(caseName: String, valueType: String)
     -> String
   {
-    switch valueType {
-    case "String", "Int", "Double", "Bool":
-      return """
-        case .\(caseName)(let value):
-            return GeneratedContent(properties: [
-                "case": GeneratedContent("\(caseName)"),
-                "value": GeneratedContent("\\(value)")
-            ])
-        """
-    default:
-      return """
-        case .\(caseName)(let value):
-            return GeneratedContent(properties: [
-                "case": GeneratedContent("\(caseName)"),
-                "value": value.generatedContent
-            ])
-        """
-    }
+    // All Generable types (including primitives Int/Double/Bool/String) carry
+    // their own typed `generatedContent`, so we never need to string-cast.
+    _ = valueType
+    return """
+      case .\(caseName)(let value):
+          return GeneratedContent(properties: [
+              "case": GeneratedContent("\(caseName)"),
+              "value": value.generatedContent
+          ])
+      """
   }
 
   private static func generateMultipleValueSerialization(
@@ -1381,14 +1371,7 @@ public struct GenerableMacro: MemberMacro, ExtensionMacro {
 
     let propertyMappings = associatedValues.enumerated().map { index, assocValue in
       let label = assocValue.label ?? "param\(index)"
-      let type = assocValue.type
-
-      switch type {
-      case "String", "Int", "Double", "Bool":
-        return "\"\(label)\": GeneratedContent(\"\\(\(label))\")"
-      default:
-        return "\"\(label)\": \(label).generatedContent"
-      }
+      return "\"\(label)\": \(label).generatedContent"
     }.joined(separator: ",\n                        ")
 
     return """
@@ -1420,35 +1403,64 @@ public struct GenerableMacro: MemberMacro, ExtensionMacro {
     let hasAnyAssociatedValues = cases.contains { $0.hasAssociatedValues }
 
     if hasAnyAssociatedValues {
+      let caseNames = cases.map { "\"\($0.name)\"" }.joined(separator: ", ")
 
-      let caseProperty = """
-        GenerationSchema.Property(
-                                name: "case",
-                                description: "Enum case identifier",
-                                type: String.self,
-                                guides: []
-                            )
-        """
-      let valueProperty = """
-        GenerationSchema.Property(
-                                name: "value",
-                                description: "Associated value data",
-                                type: String.self,
-                                guides: []
-                            )
-        """
+      let payloadChoiceExprs: [String] = cases.compactMap { enumCase in
+        if enumCase.associatedValues.isEmpty {
+          // no-payload case: empty-object payload so "value" can be unified
+          return
+            "DynamicGenerationSchema(name: \"\(enumName)_\(enumCase.name)_Payload\", properties: [])"
+        } else if enumCase.isSingleUnlabeledValue {
+          let valueType = enumCase.associatedValues[0].type
+          return "DynamicGenerationSchema(type: \(valueType).self)"
+        } else {
+          // multi-arg: emit an object schema with _0, _1, ... or labeled fields
+          let propertyList = enumCase.associatedValues.enumerated().map { index, av in
+            let name = av.label ?? "_\(index)"
+            return
+              "DynamicGenerationSchema.Property(name: \"\(name)\", schema: DynamicGenerationSchema(type: \(av.type).self))"
+          }.joined(separator: ", ")
+          return
+            "DynamicGenerationSchema(name: \"\(enumName)_\(enumCase.name)_Payload\", properties: [\(propertyList)])"
+        }
+      }
+
+      let payloadChoicesLiteral = payloadChoiceExprs.joined(separator: ", ")
+      let descriptionLiteral =
+        description.map { "\"\($0)\"" } ?? "\"Generated \(enumName)\""
 
       return DeclSyntax(
         stringLiteral: """
           nonisolated public static var generationSchema: GenerationSchema {
-              return GenerationSchema(
-                  type: Self.self,
-                  description: \(description.map { "\"\($0)\"" } ?? "\"Generated \(enumName)\""),
+              let caseSchema = DynamicGenerationSchema(
+                  name: "\(enumName)_Case",
+                  anyOf: [\(caseNames)]
+              )
+              let valueSchema = DynamicGenerationSchema(
+                  name: "\(enumName)_Value",
+                  anyOf: [\(payloadChoicesLiteral)]
+              )
+              let root = DynamicGenerationSchema(
+                  name: String(reflecting: Self.self),
+                  description: \(descriptionLiteral),
                   properties: [
-                      \(caseProperty),
-                      \(valueProperty)
+                      DynamicGenerationSchema.Property(
+                          name: "case",
+                          description: "Enum case identifier",
+                          schema: caseSchema
+                      ),
+                      DynamicGenerationSchema.Property(
+                          name: "value",
+                          description: "Associated value data",
+                          schema: valueSchema
+                      )
                   ]
               )
+              do {
+                  return try GenerationSchema(root: root, dependencies: [])
+              } catch {
+                  fatalError("Failed to build generationSchema for \(enumName): \\(error)")
+              }
           }
           """
       )
