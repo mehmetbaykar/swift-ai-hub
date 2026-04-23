@@ -122,6 +122,10 @@ public struct OllamaLanguageModel: LanguageModel {
       )
 
       if let toolCalls = chatResponse.message.toolCalls, !toolCalls.isEmpty {
+        if round >= maxRounds {
+          throw LanguageModelSession.ToolCallLoopExceeded(rounds: round)
+        }
+        round += 1
         messages.append(
           OllamaMessage(role: .assistant, content: chatResponse.message.content ?? ""))
         let resolution = try await resolveToolCalls(toolCalls, session: session)
@@ -142,10 +146,6 @@ public struct OllamaLanguageModel: LanguageModel {
               entries.append(.toolOutput(invocation.output))
               let resultText = convertSegmentsToOllama(invocation.output.segments).0
               messages.append(OllamaMessage(role: .tool, content: resultText))
-            }
-            round += 1
-            if round >= maxRounds {
-              throw LanguageModelSession.ToolCallLoopExceeded(rounds: round)
             }
             continue
           }

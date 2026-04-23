@@ -519,6 +519,10 @@ public struct OpenAILanguageModel: LanguageModel {
 
       let toolCallMessage = choice.message
       if let toolCalls = toolCallMessage.toolCalls, !toolCalls.isEmpty {
+        if round >= maxRounds {
+          throw LanguageModelSession.ToolCallLoopExceeded(rounds: round)
+        }
+        round += 1
         if let value = try? JSONValue(toolCallMessage) {
           messages.append(OpenAIMessage(role: .raw(rawContent: value), content: .text("")))
         }
@@ -546,10 +550,6 @@ public struct OpenAILanguageModel: LanguageModel {
                   content: .text(convertSegmentsToToolContentString(output.segments))
                 )
               )
-            }
-            round += 1
-            if round >= maxRounds {
-              throw LanguageModelSession.ToolCallLoopExceeded(rounds: round)
             }
             continue
           }
@@ -618,6 +618,10 @@ public struct OpenAILanguageModel: LanguageModel {
       let toolCalls = extractToolCallsFromOutput(resp.output)
       lastOutput = resp.output
       if !toolCalls.isEmpty {
+        if round >= maxRounds {
+          throw LanguageModelSession.ToolCallLoopExceeded(rounds: round)
+        }
+        round += 1
         if let output = resp.output {
           for msg in output {
             messages.append(OpenAIMessage(role: .raw(rawContent: msg), content: .text("")))
@@ -648,10 +652,6 @@ public struct OpenAILanguageModel: LanguageModel {
                   content: .text(convertSegmentsToToolContentString(output.segments))
                 )
               )
-            }
-            round += 1
-            if round >= maxRounds {
-              throw LanguageModelSession.ToolCallLoopExceeded(rounds: round)
             }
             continue
           }

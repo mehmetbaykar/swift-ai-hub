@@ -323,6 +323,10 @@ public struct GeminiLanguageModel: LanguageModel {
         } ?? []
 
       if !functionCalls.isEmpty {
+        if round >= maxRounds {
+          throw LanguageModelSession.ToolCallLoopExceeded(rounds: round)
+        }
+        round += 1
         // Resolve function calls
         let resolution = try await resolveFunctionCalls(functionCalls, session: session)
         switch resolution {
@@ -345,10 +349,6 @@ public struct GeminiLanguageModel: LanguageModel {
             }
           }
 
-          round += 1
-          if round >= maxRounds {
-            throw LanguageModelSession.ToolCallLoopExceeded(rounds: round)
-          }
           // Continue the loop to send the next request with tool results
           continue
         }

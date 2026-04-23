@@ -361,6 +361,10 @@ public struct AnthropicLanguageModel: LanguageModel {
       }
 
       if !toolUses.isEmpty {
+        if round >= maxRounds {
+          throw LanguageModelSession.ToolCallLoopExceeded(rounds: round)
+        }
+        round += 1
         messages.append(AnthropicMessage(role: .assistant, content: message.content))
         let resolution = try await resolveToolUses(toolUses, session: session)
         switch resolution {
@@ -389,10 +393,6 @@ public struct AnthropicLanguageModel: LanguageModel {
                   )))
             }
             messages.append(AnthropicMessage(role: .user, content: resultBlocks))
-            round += 1
-            if round >= maxRounds {
-              throw LanguageModelSession.ToolCallLoopExceeded(rounds: round)
-            }
             continue
           }
         }

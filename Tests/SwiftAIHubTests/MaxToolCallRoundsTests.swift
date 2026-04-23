@@ -42,11 +42,13 @@ final class AlwaysToolCallingModel: LanguageModel, @unchecked Sendable {
       guard let tool = session.tools.first else {
         throw TestError.noTool
       }
-      _ = try await tool.makeOutputSegments(from: GeneratedContent(properties: [:]))
-      await rounds.increment()
-      if await rounds.value >= maxRounds {
-        throw LanguageModelSession.ToolCallLoopExceeded(rounds: await rounds.value)
+      // Mirror providers: guard BEFORE dispatch so maxRounds=0 throws immediately.
+      let current = await rounds.value
+      if current >= maxRounds {
+        throw LanguageModelSession.ToolCallLoopExceeded(rounds: current)
       }
+      await rounds.increment()
+      _ = try await tool.makeOutputSegments(from: GeneratedContent(properties: [:]))
     }
   }
 
@@ -98,4 +100,36 @@ actor RoundCounter {
   }
   let final = await model.rounds.value
   #expect(final == 5)
+}
+
+@Test func sessionRespectsMaxToolCallRoundsOfZero() async throws {
+  let model = AlwaysToolCallingModel()
+  let session = LanguageModelSession(
+    model: model,
+    tools: [NoopTool()],
+    instructions: nil,
+    maxToolCallRounds: 0
+  )
+
+  await #expect(throws: LanguageModelSession.ToolCallLoopExceeded.self) {
+    try await session.respond(to: "go")
+  }
+  let final = await model.rounds.value
+  #expect(final == 0)
+}
+
+@Test func sessionRespectsMaxToolCallRoundsOfOne() async throws {
+  let model = AlwaysToolCallingModel()
+  let session = LanguageModelSession(
+    model: model,
+    tools: [NoopTool()],
+    instructions: nil,
+    maxToolCallRounds: 1
+  )
+
+  await #expect(throws: LanguageModelSession.ToolCallLoopExceeded.self) {
+    try await session.respond(to: "go")
+  }
+  let final = await model.rounds.value
+  #expect(final == 1)
 }

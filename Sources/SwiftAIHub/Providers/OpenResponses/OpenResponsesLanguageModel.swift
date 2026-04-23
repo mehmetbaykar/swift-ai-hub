@@ -524,6 +524,10 @@ public struct OpenResponsesLanguageModel: LanguageModel {
       let toolCalls = extractToolCallsFromOutput(resp.output)
       lastOutput = resp.output
       if !toolCalls.isEmpty {
+        if round >= maxRounds {
+          throw LanguageModelSession.ToolCallLoopExceeded(rounds: round)
+        }
+        round += 1
         if let output = resp.output {
           for item in output {
             messages.append(OpenResponsesMessage(role: .raw(rawContent: item), content: .text("")))
@@ -553,10 +557,6 @@ public struct OpenResponsesLanguageModel: LanguageModel {
                     openResponsesConvertSegmentsToToolContentString(inv.output.segments))
                 )
               )
-            }
-            round += 1
-            if round >= maxRounds {
-              throw LanguageModelSession.ToolCallLoopExceeded(rounds: round)
             }
             continue
           }
