@@ -1,4 +1,5 @@
 import SwiftCompilerPlugin
+import SwiftDiagnostics
 import SwiftSyntax
 import SwiftSyntaxBuilder
 import SwiftSyntaxMacros
@@ -15,7 +16,7 @@ public struct GenerableMacro: MemberMacro, ExtensionMacro {
       let structName = structDecl.name.text
 
       let description = extractDescription(from: node)
-      let properties = extractGuidedProperties(from: structDecl)
+      let properties = extractGuidedProperties(from: structDecl, in: context)
 
       return [
         generateRawContentProperty(),
@@ -122,7 +123,10 @@ public struct GenerableMacro: MemberMacro, ExtensionMacro {
     return stringLiteral.segments.description.trimmingCharacters(in: .init(charactersIn: "\""))
   }
 
-  private static func extractGuidedProperties(from structDecl: StructDeclSyntax) -> [PropertyInfo] {
+  private static func extractGuidedProperties(
+    from structDecl: StructDeclSyntax,
+    in context: some MacroExpansionContext
+  ) -> [PropertyInfo] {
     var properties: [PropertyInfo] = []
 
     for member in structDecl.memberBlock.members {
@@ -132,7 +136,7 @@ public struct GenerableMacro: MemberMacro, ExtensionMacro {
       {
         let propertyName = identifier.identifier.text
         let propertyType = binding.typeAnnotation?.type.description ?? "String"
-        let guideInfo = extractGuideInfo(from: varDecl.attributes)
+        let guideInfo = extractGuideInfo(from: varDecl.attributes, in: context)
 
         properties.append(
           PropertyInfo(
@@ -147,7 +151,10 @@ public struct GenerableMacro: MemberMacro, ExtensionMacro {
     return properties
   }
 
-  private static func extractGuideInfo(from attributes: AttributeListSyntax) -> GuideInfo {
+  private static func extractGuideInfo(
+    from attributes: AttributeListSyntax,
+    in context: some MacroExpansionContext
+  ) -> GuideInfo {
     for attribute in attributes {
       if let attr = attribute.as(AttributeSyntax.self),
         attr.attributeName.description == "Guide"
@@ -180,6 +187,35 @@ public struct GenerableMacro: MemberMacro, ExtensionMacro {
             let guideExpression = arg.expression
             if let parsedPattern = parsePatternFromExpression(guideExpression) {
               constraints.pattern = parsedPattern
+              continue
+            }
+
+            // 3rd @Guide overload: `@Guide(description:, Regex<_>)`. The
+            // argument is either a `/…/` literal we can extract the source
+            // of, a `Regex("…")` call whose string argument we can lift, or
+            // something computed at runtime (which we can't see from here).
+            if let regexLiteral = guideExpression.as(RegexLiteralExprSyntax.self) {
+              constraints.pattern = regexLiteral.regex.text
+              continue
+            }
+            if let regexCall = guideExpression.as(FunctionCallExprSyntax.self),
+              let callee = regexCall.calledExpression.as(DeclReferenceExprSyntax.self),
+              callee.baseName.text == "Regex",
+              let firstArg = regexCall.arguments.first,
+              let stringLiteral = firstArg.expression.as(StringLiteralExprSyntax.self),
+              let segment = stringLiteral.segments.first?.as(StringSegmentSyntax.self),
+              stringLiteral.segments.count == 1
+            {
+              constraints.pattern = segment.content.text
+              continue
+            }
+            if looksLikeDynamicRegex(guideExpression) {
+              context.diagnose(
+                Diagnostic(
+                  node: Syntax(guideExpression),
+                  message: GuideDiagnostic.nonLiteralRegex
+                )
+              )
               continue
             }
 
@@ -250,6 +286,18 @@ public struct GenerableMacro: MemberMacro, ExtensionMacro {
     default:
       break
     }
+  }
+
+  /// Returns `true` if `expression` is a call to `Regex(…)` whose argument we
+  /// can't statically read (e.g. a function call, variable reference, or an
+  /// interpolated string). Used to emit a diagnostic instead of silently
+  /// dropping the pattern.
+  private static func looksLikeDynamicRegex(_ expression: ExprSyntax) -> Bool {
+    guard let call = expression.as(FunctionCallExprSyntax.self),
+      let callee = call.calledExpression.as(DeclReferenceExprSyntax.self),
+      callee.baseName.text == "Regex"
+    else { return false }
+    return true
   }
 
   private static func parsePatternFromExpression(_ expression: ExprSyntax) -> String? {
@@ -368,6 +416,10 @@ public struct GenerableMacro: MemberMacro, ExtensionMacro {
       }
 
       return guides.isEmpty ? "[]" : "[\(guides.joined(separator: ", "))]"
+    }
+
+    if baseType == "String", let pattern = property.guide.constraints.pattern {
+      return "[.pattern(\(makeSwiftStringLiteralExpression(pattern)))]"
     }
 
     return "[]"
@@ -1498,6 +1550,26 @@ public enum GenerableMacroError: Error, CustomStringConvertible {
     case .missingRequiredParameter:
       return "Missing required parameter"
     }
+  }
+}
+
+// MARK: - Diagnostics
+
+enum GuideDiagnostic: String, DiagnosticMessage {
+  case nonLiteralRegex
+
+  var message: String {
+    switch self {
+    case .nonLiteralRegex:
+      return
+        "Cannot extract pattern string from non-literal Regex at macro expansion time; schema will use pattern: nil."
+    }
+  }
+
+  var severity: DiagnosticSeverity { .warning }
+
+  var diagnosticID: MessageID {
+    MessageID(domain: "SwiftAIHubMacros", id: "GuideMacro.\(rawValue)")
   }
 }
 
