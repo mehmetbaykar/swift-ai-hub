@@ -1036,12 +1036,19 @@ public struct GenerableMacro: MemberMacro, ExtensionMacro {
     structName: String,
     properties: [PropertyInfo]
   ) -> DeclSyntax {
-    let optionalProperties = properties.map { prop in
+    // PartiallyGenerated already declares `public var id: GenerationID`; skip a user
+    // `id: GenerationID` property to avoid redeclaration. The synthesized id
+    // (from generatedContent.id) is what streaming needs anyway.
+    let partialProperties = properties.filter {
+      !($0.name == "id" && $0.type == "GenerationID")
+    }
+
+    let optionalProperties = partialProperties.map { prop in
       let partialType = partiallyGeneratedTypeName(for: prop.type)
       return "public let \(prop.name): \(partialType)?"
     }.joined(separator: "\n        ")
 
-    let propertyExtractions = properties.map { prop in
+    let propertyExtractions = partialProperties.map { prop in
       generatePartialPropertyExtraction(propertyName: prop.name, propertyType: prop.type)
     }.joined(separator: "\n            ")
 
@@ -1058,10 +1065,10 @@ public struct GenerableMacro: MemberMacro, ExtensionMacro {
                 self.id = generatedContent.id ?? GenerationID()
                 self.rawContent = generatedContent
 
-                if \(properties.isEmpty ? "case .structure = generatedContent.kind" : "case .structure(let properties, _) = generatedContent.kind") {
+                if \(partialProperties.isEmpty ? "case .structure = generatedContent.kind" : "case .structure(let properties, _) = generatedContent.kind") {
                     \(propertyExtractions)
                 } else {
-                    \(properties.map { "self.\($0.name) = nil" }.joined(separator: "\n                    "))
+                    \(partialProperties.map { "self.\($0.name) = nil" }.joined(separator: "\n                    "))
                 }
             }
 
