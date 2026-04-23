@@ -24,7 +24,8 @@ import class Foundation.NSDecimalNumber
 ///     }
 /// }
 /// ```
-public protocol Generable: ConvertibleFromGeneratedContent, ConvertibleToGeneratedContent {
+public protocol Generable: ConvertibleFromGeneratedContent, ConvertibleToGeneratedContent, Sendable
+{
   /// A representation of partially generated content
   associatedtype PartiallyGenerated: ConvertibleFromGeneratedContent = Self
 
