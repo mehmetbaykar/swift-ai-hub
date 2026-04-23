@@ -78,6 +78,15 @@ public protocol Tool<Arguments, Output>: Sendable {
   ///
   /// - Note: This method may be invoked concurrently with itself or with other tools.
   func call(arguments: Self.Arguments) async throws -> Self.Output
+
+  /// Produces the transcript segments that represent this tool's output for a
+  /// given MCP-supplied argument payload.
+  ///
+  /// The default implementation decodes `Arguments`, invokes ``call(arguments:)``,
+  /// and wraps the result as a single `.text` or `.structure` segment. Tools
+  /// that emit images (or other non-text segments) can override this to return
+  /// richer segments — for example, `[.image(Transcript.ImageSegment(...))]`.
+  func makeOutputSegments(from arguments: GeneratedContent) async throws -> [Transcript.Segment]
 }
 
 // MARK: - Default Implementations
