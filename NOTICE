@@ -11,7 +11,8 @@ This product includes software developed at:
 
 - Christopher Karani — Conduit (MIT) and Swarm (MIT).
   Conduit: source for providers HuggingFace, Kimi, MiniMax;
-  URLSessionAsyncBytes + SSEParser utilities; reference for the default
-  tool-execution policy.
+  Linux byte polyfill (original Conduit URLSessionAsyncBytes folded into
+  URLSession+Extensions.swift); reference for the default tool-execution
+  policy.
   Swarm: source for the @Tool / @Parameter macro design and the
   SwarmMCP module shape (mirrored by FastMCPAIBridge in swift-fast-mcp).
