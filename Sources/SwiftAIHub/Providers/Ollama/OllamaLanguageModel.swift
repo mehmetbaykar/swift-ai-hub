@@ -134,9 +134,10 @@ public struct OllamaLanguageModel: LanguageModel {
           if !calls.isEmpty {
             entries.append(.toolCalls(Transcript.ToolCalls(calls)))
           }
+          let empty = try emptyResponseContent(for: type)
           return LanguageModelSession.Response(
-            content: "" as! Content,
-            rawContent: GeneratedContent(""),
+            content: empty.content,
+            rawContent: empty.rawContent,
             transcriptEntries: ArraySlice(entries)
           )
         case .invocations(let invocations):
@@ -587,4 +588,25 @@ private struct OllamaToolFunction: Decodable, Sendable {
     case name
     case arguments
   }
+}
+
+private func emptyResponseContent<Content: Generable>(
+  for type: Content.Type
+) throws -> (content: Content, rawContent: GeneratedContent) {
+  if type == String.self {
+    let raw = GeneratedContent("")
+    return ("" as! Content, raw)
+  }
+
+  let emptyObject = GeneratedContent(properties: [:])
+  if let content = try? Content(emptyObject) {
+    return (content, emptyObject)
+  }
+
+  let nullContent = GeneratedContent(kind: .null)
+  if let content = try? Content(nullContent) {
+    return (content, nullContent)
+  }
+
+  throw GeneratedContentConversionError.typeMismatch
 }
