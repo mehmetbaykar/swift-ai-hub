@@ -15,6 +15,12 @@ public final class LanguageModelSession: @unchecked Sendable {
 
   @ObservationIgnored private let state: Locked<State>
 
+  /// Serializes concurrent `respond()` / `streamResponse()` bodies on the same
+  /// session so that only one request at a time mutates the shared transcript.
+  /// Callers that race (e.g. `async let` or `withTaskGroup`) queue on the gate
+  /// instead of corrupting each other's conversation history.
+  @ObservationIgnored private let respondGate = RespondGate()
+
   private let model: any LanguageModel
   public let tools: [any Tool]
   public let instructions: Instructions?
@@ -147,13 +153,16 @@ public final class LanguageModelSession: @unchecked Sendable {
   }
 
   nonisolated private func wrapRespond<T>(_ operation: () async throws -> T) async throws -> T {
+    await respondGate.acquire()
     beginResponding()
     do {
       let result = try await operation()
       endResponding()
+      await respondGate.release()
       return result
     } catch {
       endResponding()
+      await respondGate.release()
       throw error
     }
   }
@@ -166,6 +175,7 @@ public final class LanguageModelSession: @unchecked Sendable {
     let relay = AsyncThrowingStream<ResponseStream<Content>.Snapshot, any Error> { continuation in
       let stream = upstream
       Task {
+        await session.respondGate.acquire()
         session.beginResponding()
         var lastSnapshot: ResponseStream<Content>.Snapshot?
         do {
@@ -199,6 +209,7 @@ public final class LanguageModelSession: @unchecked Sendable {
           continuation.finish(throwing: error)
         }
         session.endResponding()
+        await session.respondGate.release()
       }
     }
     return ResponseStream(stream: relay)
@@ -982,5 +993,31 @@ private struct State: Equatable, Sendable {
 
   mutating func endResponding() {
     count = max(0, count - 1)
+  }
+}
+
+/// Fair FIFO gate ensuring only one `respond()` / `streamResponse()` body runs
+/// against a session's transcript at a time. Concurrent callers queue on
+/// `acquire()` and resume in arrival order when the predecessor calls
+/// `release()`. See `LanguageModelSession.respondGate`.
+fileprivate actor RespondGate {
+  private var busy = false
+  private var waiters: [CheckedContinuation<Void, Never>] = []
+
+  func acquire() async {
+    if !busy {
+      busy = true
+      return
+    }
+    await withCheckedContinuation { waiters.append($0) }
+  }
+
+  func release() {
+    if waiters.isEmpty {
+      busy = false
+    } else {
+      let next = waiters.removeFirst()
+      next.resume()
+    }
   }
 }
