@@ -90,6 +90,19 @@ actor MockRequestScript {
   }
 }
 
+/// Sendable reference box used to carry a `MockURLProtocol` instance into
+/// a `sending` Task closure. URLProtocol itself is not Sendable in Swift 6
+/// and capturing a `@unchecked Sendable` subclass as `self` trips the
+/// sending-closure diagnostic; wrapping it in a separate `@unchecked
+/// Sendable` box lets the capture pass without `nonisolated(unsafe)`
+/// (which would emit its own "unnecessary for a Sendable constant"
+/// warning). URLSession keeps each MockURLProtocol alive for the duration
+/// of a request, so the wrapped reference is valid throughout the Task.
+private final class ProtocolRef: @unchecked Sendable {
+  let inner: MockURLProtocol
+  init(_ inner: MockURLProtocol) { self.inner = inner }
+}
+
 /// URLProtocol subclass that routes all requests through
 /// `MockRequestScript.shared`. Attach it via
 /// `URLSessionConfiguration.protocolClasses` and the providers will never
@@ -101,10 +114,7 @@ final class MockURLProtocol: URLProtocol, @unchecked Sendable {
 
   override func startLoading() {
     let req = request
-    // `self` is @unchecked Sendable by the class annotation above; the
-    // surrounding URLProtocol framework keeps it alive until we signal
-    // completion via client callbacks.
-    nonisolated(unsafe) let unsafeSelf = self
+    let ref = ProtocolRef(self)
     Task {
       do {
         let response = try await MockRequestScript.shared.next(for: req)
@@ -121,12 +131,12 @@ final class MockURLProtocol: URLProtocol, @unchecked Sendable {
         else {
           throw NSError(domain: "MockURLProtocol", code: 3, userInfo: nil)
         }
-        unsafeSelf.client?.urlProtocol(
-          unsafeSelf, didReceive: httpResponse, cacheStoragePolicy: .notAllowed)
-        unsafeSelf.client?.urlProtocol(unsafeSelf, didLoad: response.body)
-        unsafeSelf.client?.urlProtocolDidFinishLoading(unsafeSelf)
+        ref.inner.client?.urlProtocol(
+          ref.inner, didReceive: httpResponse, cacheStoragePolicy: .notAllowed)
+        ref.inner.client?.urlProtocol(ref.inner, didLoad: response.body)
+        ref.inner.client?.urlProtocolDidFinishLoading(ref.inner)
       } catch {
-        unsafeSelf.client?.urlProtocol(unsafeSelf, didFailWithError: error)
+        ref.inner.client?.urlProtocol(ref.inner, didFailWithError: error)
       }
     }
   }
