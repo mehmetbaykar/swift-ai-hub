@@ -1506,60 +1506,14 @@ import Foundation
       decisions = Array(repeating: .execute, count: transcriptCalls.count)
     }
 
-    var results: [ToolInvocationResult] = []
-    results.reserveCapacity(transcriptCalls.count)
-
-    for (index, call) in transcriptCalls.enumerated() {
-      switch decisions[index] {
-      case .stop:
-        // This branch should be unreachable because `.stop` returns during decision collection.
-        // Keep it as a defensive guard in case that logic changes.
-        return .stop(calls: transcriptCalls)
-      case .provideOutput(let segments):
-        let output = Transcript.ToolOutput(
-          id: call.id,
-          toolName: call.toolName,
-          segments: segments
-        )
-        if let delegate = session.toolExecutionDelegate {
-          await delegate.didExecuteToolCall(call, output: output, in: session)
-        }
-        results.append(ToolInvocationResult(call: call, output: output))
-      case .execute:
-        guard let tool = toolsByName[call.toolName] else {
-          let message = Transcript.Segment.text(.init(content: "Tool not found: \(call.toolName)"))
-          let output = Transcript.ToolOutput(
-            id: call.id,
-            toolName: call.toolName,
-            segments: [message]
-          )
-          if let delegate = session.toolExecutionDelegate {
-            await delegate.didExecuteToolCall(call, output: output, in: session)
-          }
-          results.append(ToolInvocationResult(call: call, output: output))
-          continue
-        }
-
-        do {
-          let segments = try await tool.makeOutputSegments(from: call.arguments)
-          let output = Transcript.ToolOutput(
-            id: call.id,
-            toolName: tool.name,
-            segments: segments
-          )
-          if let delegate = session.toolExecutionDelegate {
-            await delegate.didExecuteToolCall(call, output: output, in: session)
-          }
-          results.append(ToolInvocationResult(call: call, output: output))
-        } catch {
-          if let delegate = session.toolExecutionDelegate {
-            await delegate.didFailToolCall(call, error: error, in: session)
-          }
-          throw LanguageModelSession.ToolCallError(tool: tool, underlyingError: error)
-        }
-      }
+    let outputs = try await session.executeToolDecisionsInParallel(
+      transcriptCalls: transcriptCalls,
+      decisions: decisions,
+      toolsByName: toolsByName
+    )
+    let results = zip(transcriptCalls, outputs).map {
+      ToolInvocationResult(call: $0.0, output: $0.1)
     }
-
     return .invocations(results)
   }
 

@@ -1100,44 +1100,13 @@ private func resolveToolCalls(
   } else {
     decisions = Array(repeating: .execute, count: transcriptCalls.count)
   }
-  var results: [OpenResponsesToolInvocationResult] = []
-  for (i, call) in transcriptCalls.enumerated() {
-    switch decisions[i] {
-    case .stop:
-      return .stop(calls: transcriptCalls)
-    case .provideOutput(let segs):
-      let out = Transcript.ToolOutput(id: call.id, toolName: call.toolName, segments: segs)
-      if let d = session.toolExecutionDelegate {
-        await d.didExecuteToolCall(call, output: out, in: session)
-      }
-      results.append(OpenResponsesToolInvocationResult(call: call, output: out))
-    case .execute:
-      guard let tool = byName[call.toolName] else {
-        let out = Transcript.ToolOutput(
-          id: call.id,
-          toolName: call.toolName,
-          segments: [.text(.init(content: "Tool not found: \(call.toolName)"))]
-        )
-        if let d = session.toolExecutionDelegate {
-          await d.didExecuteToolCall(call, output: out, in: session)
-        }
-        results.append(OpenResponsesToolInvocationResult(call: call, output: out))
-        continue
-      }
-      do {
-        let segs = try await tool.makeOutputSegments(from: call.arguments)
-        let out = Transcript.ToolOutput(id: call.id, toolName: tool.name, segments: segs)
-        if let d = session.toolExecutionDelegate {
-          await d.didExecuteToolCall(call, output: out, in: session)
-        }
-        results.append(OpenResponsesToolInvocationResult(call: call, output: out))
-      } catch {
-        if let d = session.toolExecutionDelegate {
-          await d.didFailToolCall(call, error: error, in: session)
-        }
-        throw LanguageModelSession.ToolCallError(tool: tool, underlyingError: error)
-      }
-    }
+  let outputs = try await session.executeToolDecisionsInParallel(
+    transcriptCalls: transcriptCalls,
+    decisions: decisions,
+    toolsByName: byName
+  )
+  let results = zip(transcriptCalls, outputs).map {
+    OpenResponsesToolInvocationResult(call: $0.0, output: $0.1)
   }
   return .invocations(results)
 }
