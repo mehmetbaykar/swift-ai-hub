@@ -104,6 +104,22 @@ public struct AnthropicLanguageModel: LanguageModel {
     /// allowing you to pass additional options not explicitly modeled.
     public var extraBody: [String: JSONValue]?
 
+    /// Prompt-caching configuration. When set, the provider emits
+    /// `cache_control` markers on eligible request blocks so Anthropic's
+    /// prompt-caching feature can skip retokenizing unchanged prefixes
+    /// across requests. Defaults to `nil` (disabled).
+    public var promptCaching: PromptCaching?
+
+    /// Prompt-caching configuration for Anthropic requests.
+    public enum PromptCaching: Hashable, Codable, Sendable {
+      /// Enable prompt caching with `ephemeral` markers on the default
+      /// set of blocks: last system block, last tool entry, and last user
+      /// message in the outgoing request.
+      case enabled
+      /// Equivalent to ``enabled`` but explicit about the cache type.
+      case ephemeral
+    }
+
     // MARK: - Nested Types
 
     /// Metadata about the request.
@@ -238,6 +254,9 @@ public struct AnthropicLanguageModel: LanguageModel {
     ///   - thinking: Configuration for extended thinking.
     ///   - serviceTier: The tier of service to use for the request.
     ///   - extraBody: Additional parameters to include in the request body.
+    ///   - promptCaching: Prompt-caching configuration. When set, the
+    ///     provider emits `cache_control` markers so Anthropic can reuse
+    ///     previously tokenized prefixes across requests.
     public init(
       topP: Double? = nil,
       topK: Int? = nil,
@@ -246,7 +265,8 @@ public struct AnthropicLanguageModel: LanguageModel {
       toolChoice: ToolChoice? = nil,
       thinking: Thinking? = nil,
       serviceTier: ServiceTier? = nil,
-      extraBody: [String: JSONValue]? = nil
+      extraBody: [String: JSONValue]? = nil,
+      promptCaching: PromptCaching? = nil
     ) {
       self.topP = topP
       self.topK = topK
@@ -256,6 +276,7 @@ public struct AnthropicLanguageModel: LanguageModel {
       self.thinking = thinking
       self.serviceTier = serviceTier
       self.extraBody = extraBody
+      self.promptCaching = promptCaching
     }
   }
   /// The reason the model is unavailable.
@@ -333,27 +354,33 @@ public struct AnthropicLanguageModel: LanguageModel {
     let responseSchema =
       type == String.self ? nil : try convertSchemaToAnthropicFormat(Content.generationSchema)
 
-    var messages = session.transcript.toAnthropicMessages()
+    // W2 I9a: when session has instructions, emit them via the top-level
+    // `system` field instead of folding them into a user message.
+    let systemBlocks = buildSystemBlocks(from: session)
+    var messages = session.transcript.toAnthropicMessages(
+      omitInstructions: systemBlocks != nil
+    )
     var entries: [Transcript.Entry] = []
     let maxRounds = session.maxToolCallRounds
     var round = 0
+    var accumulatedUsage: AnthropicUsage?
 
     while true {
       let params = try createMessageParams(
         model: model,
-        system: nil,
+        system: systemBlocks,
         messages: messages,
         tools: anthropicTools.isEmpty ? nil : anthropicTools,
         responseSchema: responseSchema,
         options: options
       )
       let body = try JSONEncoder().encode(params)
-      let message: AnthropicMessageResponse = try await httpSession.fetch(
-        .post,
+      let message: AnthropicMessageResponse = try await fetchJSON(
         url: url,
         headers: headers,
         body: body
       )
+      accumulatedUsage = mergeUsage(accumulatedUsage, message.usage)
 
       let toolUses: [AnthropicToolUse] = message.content.compactMap { block in
         if case .toolUse(let u) = block { return u }
@@ -376,7 +403,9 @@ public struct AnthropicLanguageModel: LanguageModel {
           return LanguageModelSession.Response(
             content: empty.content,
             rawContent: empty.rawContent,
-            transcriptEntries: ArraySlice(entries)
+            transcriptEntries: ArraySlice(entries),
+            usage: accumulatedUsage?.toUsage(),
+            finishReason: message.stopReason.map(mapStopReason)
           )
         case .invocations(let invocations):
           if !invocations.isEmpty {
@@ -405,11 +434,16 @@ public struct AnthropicLanguageModel: LanguageModel {
         }
       }.joined()
 
+      let finishReason = message.stopReason.map(mapStopReason)
+      let usage = accumulatedUsage?.toUsage()
+
       if type == String.self {
         return LanguageModelSession.Response(
           content: text as! Content,
           rawContent: GeneratedContent(text),
-          transcriptEntries: ArraySlice(entries)
+          transcriptEntries: ArraySlice(entries),
+          usage: usage,
+          finishReason: finishReason
         )
       }
 
@@ -418,7 +452,9 @@ public struct AnthropicLanguageModel: LanguageModel {
       return LanguageModelSession.Response(
         content: content,
         rawContent: rawContent,
-        transcriptEntries: ArraySlice(entries)
+        transcriptEntries: ArraySlice(entries),
+        usage: usage,
+        finishReason: finishReason
       )
     }
   }
@@ -448,57 +484,115 @@ public struct AnthropicLanguageModel: LanguageModel {
             let responseSchema =
               type == String.self
               ? nil : try convertSchemaToAnthropicFormat(Content.generationSchema)
-            var params = try createMessageParams(
-              model: model,
-              system: nil,
-              messages: session.transcript.toAnthropicMessages(),
-              tools: anthropicTools.isEmpty ? nil : anthropicTools,
-              responseSchema: responseSchema,
-              options: options
+
+            // W2 I9a: system passthrough in streaming path.
+            let systemBlocks = buildSystemBlocks(from: session)
+            var messages = session.transcript.toAnthropicMessages(
+              omitInstructions: systemBlocks != nil
             )
-            params["stream"] = .bool(true)
-
-            let body = try JSONEncoder().encode(params)
-
-            // Stream server-sent events from Anthropic API
-            let events: AsyncThrowingStream<AnthropicStreamEvent, any Error> =
-              httpSession
-              .fetchEventStream(
-                .post,
-                url: url,
-                headers: headers,
-                body: body
-              )
-
+            let maxRounds = session.maxToolCallRounds
+            var round = 0
             var accumulatedText = ""
             let expectsStructuredResponse = type != String.self
 
-            for try await event in events {
-              switch event {
-              case .contentBlockDelta(let delta):
-                if case .textDelta(let textDelta) = delta.delta {
-                  accumulatedText += textDelta.text
+            // W2 I8a: streaming tool-loop.
+            requestLoop: while true {
+              var params = try createMessageParams(
+                model: model,
+                system: systemBlocks,
+                messages: messages,
+                tools: anthropicTools.isEmpty ? nil : anthropicTools,
+                responseSchema: responseSchema,
+                options: options
+              )
+              params["stream"] = .bool(true)
+              let body = try JSONEncoder().encode(params)
 
-                  if expectsStructuredResponse {
-                    if let snapshot: LanguageModelSession.ResponseStream<Content>.Snapshot =
-                      try? partialSnapshot(from: accumulatedText)
-                    {
-                      continuation.yield(snapshot)
-                    }
-                  } else {
-                    let raw = GeneratedContent(accumulatedText)
-                    let content: Content.PartiallyGenerated = (accumulatedText as! Content)
-                      .asPartiallyGenerated()
-                    continuation.yield(.init(content: content, rawContent: raw))
+              let events: AsyncThrowingStream<AnthropicStreamEvent, any Error> =
+                httpSession.fetchEventStream(
+                  .post,
+                  url: url,
+                  headers: headers,
+                  body: body
+                )
+
+              var pendingToolUses: [Int: StreamingToolUse] = [:]
+
+              for try await event in events {
+                switch event {
+                case .contentBlockStart(let start):
+                  if start.contentBlock.type == "tool_use",
+                    let id = start.contentBlock.id,
+                    let name = start.contentBlock.name
+                  {
+                    pendingToolUses[start.index] = StreamingToolUse(id: id, name: name)
                   }
+                case .contentBlockDelta(let delta):
+                  switch delta.delta {
+                  case .textDelta(let textDelta):
+                    accumulatedText += textDelta.text
+                    if expectsStructuredResponse {
+                      if let snapshot: LanguageModelSession.ResponseStream<Content>.Snapshot =
+                        try? partialSnapshot(from: accumulatedText)
+                      {
+                        continuation.yield(snapshot)
+                      }
+                    } else {
+                      let raw = GeneratedContent(accumulatedText)
+                      let content: Content.PartiallyGenerated = (accumulatedText as! Content)
+                        .asPartiallyGenerated()
+                      continuation.yield(.init(content: content, rawContent: raw))
+                    }
+                  case .inputJsonDelta(let jsonDelta):
+                    pendingToolUses[delta.index]?.partialJson += jsonDelta.partialJson
+                  case .ignored:
+                    break
+                  }
+                case .messageStop:
+                  if pendingToolUses.isEmpty {
+                    continuation.finish()
+                    return
+                  }
+                  let toolUses =
+                    pendingToolUses
+                    .sorted { $0.key < $1.key }
+                    .map { $0.value.finalized() }
+                  if round >= maxRounds {
+                    throw LanguageModelSession.ToolCallLoopExceeded(rounds: round)
+                  }
+                  round += 1
+                  messages.append(
+                    AnthropicMessage(
+                      role: .assistant,
+                      content: toolUses.map { AnthropicContent.toolUse($0) }
+                    )
+                  )
+                  let resolution = try await resolveToolUses(toolUses, session: session)
+                  switch resolution {
+                  case .stop:
+                    continuation.finish()
+                    return
+                  case .invocations(let invocations):
+                    var resultBlocks: [AnthropicContent] = []
+                    for invocation in invocations {
+                      let resultContent = convertSegmentsToAnthropicContent(
+                        invocation.output.segments)
+                      resultBlocks.append(
+                        .toolResult(
+                          AnthropicToolResult(
+                            toolUseId: invocation.call.id,
+                            content: resultContent
+                          )))
+                    }
+                    messages.append(AnthropicMessage(role: .user, content: resultBlocks))
+                    continue requestLoop
+                  }
+                case .messageStart, .contentBlockStop, .messageDelta, .ping, .ignored:
+                  break
                 }
-              case .messageStop:
-                continuation.finish()
-                return
-              case .messageStart, .contentBlockStart, .contentBlockStop, .messageDelta, .ping,
-                .ignored:
-                break
               }
+
+              break
             }
 
             continuation.finish()
@@ -530,23 +624,29 @@ public struct AnthropicLanguageModel: LanguageModel {
 
 private func createMessageParams(
   model: String,
-  system: String?,
+  system: [AnthropicSystemBlock]?,
   messages: [AnthropicMessage],
   tools: [AnthropicTool]?,
   responseSchema: JSONSchema?,
   options: GenerationOptions
 ) throws -> [String: JSONValue] {
+  let cacheEnabled = options[custom: AnthropicLanguageModel.self]?.promptCaching != nil
+
+  let finalSystem = cacheEnabled ? applyCacheMarker(toLast: system) : system
+  let finalTools = cacheEnabled ? applyCacheMarker(toLast: tools) : tools
+  let finalMessages = cacheEnabled ? applyCacheMarkerToLastUser(messages) : messages
+
   var params: [String: JSONValue] = [
     "model": .string(model),
-    "messages": try JSONValue(messages),
+    "messages": try JSONValue(finalMessages),
     "max_tokens": .int(options.maximumResponseTokens ?? 1024),
   ]
 
-  if let system {
-    params["system"] = .string(system)
+  if let finalSystem, !finalSystem.isEmpty {
+    params["system"] = try JSONValue(finalSystem)
   }
-  if let tools, !tools.isEmpty {
-    params["tools"] = try JSONValue(tools)
+  if let finalTools, !finalTools.isEmpty {
+    params["tools"] = try JSONValue(finalTools)
   }
   if let responseSchema {
     // Structured outputs: https://platform.claude.com/docs/en/build-with-claude/structured-outputs
@@ -756,11 +856,12 @@ private func fromGeneratedContent(_ content: GeneratedContent) throws -> [String
 // MARK: - Supporting Types
 
 extension Transcript {
-  fileprivate func toAnthropicMessages() -> [AnthropicMessage] {
+  fileprivate func toAnthropicMessages(omitInstructions: Bool = false) -> [AnthropicMessage] {
     var messages = [AnthropicMessage]()
     for item in self {
       switch item {
       case .instructions(let instructions):
+        if omitInstructions { continue }
         messages.append(
           .init(
             role: .user,
@@ -824,12 +925,53 @@ private struct AnthropicTool: Codable, Sendable {
   let name: String
   let description: String
   let inputSchema: JSONSchema
+  var cacheControl: AnthropicCacheControl?
 
   enum CodingKeys: String, CodingKey {
     case name
     case description
     case inputSchema = "input_schema"
+    case cacheControl = "cache_control"
   }
+
+  init(
+    name: String,
+    description: String,
+    inputSchema: JSONSchema,
+    cacheControl: AnthropicCacheControl? = nil
+  ) {
+    self.name = name
+    self.description = description
+    self.inputSchema = inputSchema
+    self.cacheControl = cacheControl
+  }
+}
+
+/// Anthropic top-level `system` blocks support only `text` blocks plus an
+/// optional `cache_control` marker.
+private struct AnthropicSystemBlock: Codable, Sendable {
+  let type: String
+  let text: String
+  var cacheControl: AnthropicCacheControl?
+
+  enum CodingKeys: String, CodingKey {
+    case type
+    case text
+    case cacheControl = "cache_control"
+  }
+
+  init(text: String, cacheControl: AnthropicCacheControl? = nil) {
+    self.type = "text"
+    self.text = text
+    self.cacheControl = cacheControl
+  }
+}
+
+/// Cache-control marker consumed when prompt caching is enabled. Only
+/// `ephemeral` is modeled — it's the sole type Anthropic accepts today.
+struct AnthropicCacheControl: Codable, Sendable, Hashable {
+  let type: String
+  static let ephemeral = AnthropicCacheControl(type: "ephemeral")
 }
 
 private struct AnthropicMessage: Codable, Sendable {
@@ -879,10 +1021,18 @@ private enum AnthropicContent: Codable, Sendable {
 private struct AnthropicText: Codable, Sendable {
   let type: String
   let text: String
+  var cacheControl: AnthropicCacheControl?
 
-  init(text: String) {
+  enum CodingKeys: String, CodingKey {
+    case type
+    case text
+    case cacheControl = "cache_control"
+  }
+
+  init(text: String, cacheControl: AnthropicCacheControl? = nil) {
     self.type = "text"
     self.text = text
+    self.cacheControl = cacheControl
   }
 }
 
@@ -978,9 +1128,10 @@ private struct AnthropicMessageResponse: Codable, Sendable {
   let content: [AnthropicContent]
   let model: String
   let stopReason: StopReason?
+  let usage: AnthropicUsage?
 
   enum CodingKeys: String, CodingKey {
-    case id, type, role, content, model
+    case id, type, role, content, model, usage
     case stopReason = "stop_reason"
   }
 
@@ -1076,6 +1227,8 @@ private enum AnthropicStreamEvent: Codable, Sendable {
     struct ContentBlock: Codable, Sendable {
       let type: String
       let text: String?
+      let id: String?
+      let name: String?
     }
   }
 
@@ -1149,6 +1302,172 @@ private enum AnthropicStreamEvent: Codable, Sendable {
         case stopReason = "stop_reason"
         case stopSequence = "stop_sequence"
       }
+    }
+  }
+}
+
+// MARK: - Usage + FinishReason wiring (W1)
+
+private struct AnthropicUsage: Codable, Sendable {
+  let inputTokens: Int?
+  let outputTokens: Int?
+  let cacheReadInputTokens: Int?
+  let cacheCreationInputTokens: Int?
+
+  enum CodingKeys: String, CodingKey {
+    case inputTokens = "input_tokens"
+    case outputTokens = "output_tokens"
+    case cacheReadInputTokens = "cache_read_input_tokens"
+    case cacheCreationInputTokens = "cache_creation_input_tokens"
+  }
+
+  var totalPromptTokens: Int? {
+    let parts = [inputTokens, cacheReadInputTokens, cacheCreationInputTokens].compactMap { $0 }
+    return parts.isEmpty ? nil : parts.reduce(0, +)
+  }
+
+  func toUsage() -> Usage {
+    let prompt = totalPromptTokens
+    let completion = outputTokens
+    let total: Int? = {
+      switch (prompt, completion) {
+      case (let p?, let c?): return p + c
+      case (let p?, nil): return p
+      case (nil, let c?): return c
+      case (nil, nil): return nil
+      }
+    }()
+    return Usage(promptTokens: prompt, completionTokens: completion, totalTokens: total)
+  }
+}
+
+private func mergeUsage(_ lhs: AnthropicUsage?, _ rhs: AnthropicUsage?) -> AnthropicUsage? {
+  switch (lhs, rhs) {
+  case (nil, nil): return nil
+  case (let l?, nil): return l
+  case (nil, let r?): return r
+  case (let l?, let r?):
+    return AnthropicUsage(
+      inputTokens: sumOptional(l.inputTokens, r.inputTokens),
+      outputTokens: sumOptional(l.outputTokens, r.outputTokens),
+      cacheReadInputTokens: sumOptional(l.cacheReadInputTokens, r.cacheReadInputTokens),
+      cacheCreationInputTokens: sumOptional(l.cacheCreationInputTokens, r.cacheCreationInputTokens)
+    )
+  }
+}
+
+private func sumOptional(_ a: Int?, _ b: Int?) -> Int? {
+  switch (a, b) {
+  case (nil, nil): return nil
+  case (let x?, nil): return x
+  case (nil, let y?): return y
+  case (let x?, let y?): return x + y
+  }
+}
+
+private func mapStopReason(_ reason: AnthropicMessageResponse.StopReason) -> FinishReason {
+  switch reason {
+  case .endTurn: return .stop
+  case .stopSequence: return .stop
+  case .maxTokens: return .length
+  case .toolUse: return .toolCalls
+  case .refusal: return .contentFilter
+  case .pauseTurn: return .other("pause_turn")
+  case .modelContextWindowExceeded: return .other("model_context_window_exceeded")
+  }
+}
+
+// MARK: - System passthrough (W2 I9a)
+
+extension AnthropicLanguageModel {
+  fileprivate func buildSystemBlocks(from session: LanguageModelSession) -> [AnthropicSystemBlock]?
+  {
+    guard let instructions = session.instructions else { return nil }
+    let text = instructions.description
+    guard !text.isEmpty else { return nil }
+    return [AnthropicSystemBlock(text: text)]
+  }
+}
+
+// MARK: - Prompt caching (W2 I1)
+
+private func applyCacheMarker(toLast blocks: [AnthropicSystemBlock]?) -> [AnthropicSystemBlock]? {
+  guard var blocks, !blocks.isEmpty else { return blocks }
+  blocks[blocks.count - 1].cacheControl = .ephemeral
+  return blocks
+}
+
+private func applyCacheMarker(toLast tools: [AnthropicTool]?) -> [AnthropicTool]? {
+  guard var tools, !tools.isEmpty else { return tools }
+  tools[tools.count - 1].cacheControl = .ephemeral
+  return tools
+}
+
+private func applyCacheMarkerToLastUser(_ messages: [AnthropicMessage]) -> [AnthropicMessage] {
+  guard let lastUserIndex = messages.lastIndex(where: { $0.role == .user }) else {
+    return messages
+  }
+  var result = messages
+  let lastUser = result[lastUserIndex]
+  var content = lastUser.content
+  guard
+    let lastTextIndex = content.lastIndex(where: {
+      if case .text = $0 { return true } else { return false }
+    })
+  else {
+    return messages
+  }
+  if case .text(var text) = content[lastTextIndex] {
+    text.cacheControl = .ephemeral
+    content[lastTextIndex] = .text(text)
+  }
+  result[lastUserIndex] = AnthropicMessage(role: lastUser.role, content: content)
+  return result
+}
+
+// MARK: - Streaming tool_use accumulator
+
+private struct StreamingToolUse {
+  let id: String
+  let name: String
+  var partialJson: String = ""
+
+  func finalized() -> AnthropicToolUse {
+    let input: [String: JSONValue]?
+    if partialJson.isEmpty {
+      input = nil
+    } else if let data = partialJson.data(using: .utf8),
+      let value = try? JSONDecoder().decode(JSONValue.self, from: data),
+      case .object(let dict) = value
+    {
+      input = dict
+    } else {
+      input = nil
+    }
+    return AnthropicToolUse(id: id, name: name, input: input)
+  }
+}
+
+// MARK: - HTTP fetch with rate-limit header inspection (W5)
+
+extension AnthropicLanguageModel {
+  fileprivate func fetchJSON<T: Decodable & Sendable>(
+    url: URL,
+    headers: [String: String],
+    body: Data
+  ) async throws -> T {
+    do {
+      return try await httpSession.fetch(.post, url: url, headers: headers, body: body)
+    } catch let error as URLSessionError {
+      if case .httpError(let statusCode, let detail, let responseHeaders) = error,
+        statusCode == 429
+      {
+        let rateLimit = RateLimitInfo.from(headers: responseHeaders)
+        throw LanguageModelSession.GenerationError.rateLimited(
+          .init(debugDescription: detail, rateLimit: rateLimit)
+        )
+      }
+      throw error
     }
   }
 }

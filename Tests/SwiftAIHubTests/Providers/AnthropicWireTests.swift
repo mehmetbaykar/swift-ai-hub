@@ -225,6 +225,262 @@ struct AnthropicWireTests {
     #expect(last == "hello world")
   }
 
+  /// Asserts that ``CustomGenerationOptions.promptCaching`` injects
+  /// `cache_control: {"type": "ephemeral"}` on the last system block,
+  /// last tool descriptor, and last user message — per Anthropic's
+  /// prompt-caching docs. Verifies W2 I1.
+  @Test func promptCachingEmitsCacheControlOnEligibleBlocks() async throws {
+    await MockRequestScript.shared.reset(host: anthropicHost)
+    await MockRequestScript.shared.enqueue(
+      MockResponse(json: anthropicFinalAnswerBody), host: anthropicHost)
+
+    let session = LanguageModelSession(
+      model: makeAnthropicModel(),
+      tools: [AnthropicEchoTool()],
+      instructions: "be concise"
+    )
+    var options = GenerationOptions()
+    options[custom: AnthropicLanguageModel.self] = .init(promptCaching: .enabled)
+    _ = try await session.respond(to: "hello", options: options)
+
+    let requests = await MockRequestScript.shared.observedRequests(host: anthropicHost)
+    let body = try #require(requests.first?.httpBody)
+    let json = try #require(try JSONSerialization.jsonObject(with: body) as? [String: Any])
+
+    // System block: expect last (only) block to carry cache_control.
+    let system = try #require(json["system"] as? [[String: Any]])
+    #expect(system.count == 1)
+    let systemCache = try #require(system[0]["cache_control"] as? [String: Any])
+    #expect(systemCache["type"] as? String == "ephemeral")
+
+    // Tool: single tool → last-and-only tool gets cache_control.
+    let tools = try #require(json["tools"] as? [[String: Any]])
+    let toolCache = try #require(tools[0]["cache_control"] as? [String: Any])
+    #expect(toolCache["type"] as? String == "ephemeral")
+
+    // User message: last text block on last user message gets cache_control.
+    let messages = try #require(json["messages"] as? [[String: Any]])
+    let lastUser = try #require(messages.last)
+    let content = try #require(lastUser["content"] as? [[String: Any]])
+    let lastText = try #require(content.last)
+    let msgCache = try #require(lastText["cache_control"] as? [String: Any])
+    #expect(msgCache["type"] as? String == "ephemeral")
+  }
+
+  /// When `instructions` is set, the Anthropic provider must emit them via
+  /// the top-level `system` field and must *not* fold them into a user
+  /// message. Verifies W2 I9a.
+  @Test func systemPromptPassthroughEmitsTopLevelSystemField() async throws {
+    await MockRequestScript.shared.reset(host: anthropicHost)
+    await MockRequestScript.shared.enqueue(
+      MockResponse(json: anthropicFinalAnswerBody), host: anthropicHost)
+
+    let session = LanguageModelSession(
+      model: makeAnthropicModel(),
+      instructions: "respond in rhyme"
+    )
+    _ = try await session.respond(to: "hi there")
+
+    let requests = await MockRequestScript.shared.observedRequests(host: anthropicHost)
+    let body = try #require(requests.first?.httpBody)
+    let json = try #require(try JSONSerialization.jsonObject(with: body) as? [String: Any])
+
+    // System field present, carries the instruction text.
+    let system = try #require(json["system"] as? [[String: Any]])
+    #expect(system.count == 1)
+    #expect(system[0]["text"] as? String == "respond in rhyme")
+
+    // Only the user prompt remains in `messages` — the instruction must
+    // *not* have been folded in.
+    let messages = try #require(json["messages"] as? [[String: Any]])
+    #expect(messages.count == 1)
+    #expect(messages[0]["role"] as? String == "user")
+    let msgData = try JSONSerialization.data(withJSONObject: messages[0])
+    let msgString = try #require(String(data: msgData, encoding: .utf8))
+    #expect(!msgString.contains("respond in rhyme"))
+    #expect(msgString.contains("hi there"))
+  }
+
+  /// Verifies W1: Anthropic's `usage` block is projected onto
+  /// ``Response.usage`` and `stop_reason` onto ``Response.finishReason``.
+  @Test func usageAndFinishReasonPopulated() async throws {
+    let body = """
+      {
+        "id": "msg_u",
+        "type": "message",
+        "role": "assistant",
+        "model": "claude-test",
+        "stop_reason": "end_turn",
+        "content": [{"type": "text", "text": "ok"}],
+        "usage": {
+          "input_tokens": 10,
+          "output_tokens": 3,
+          "cache_read_input_tokens": 4,
+          "cache_creation_input_tokens": 2
+        }
+      }
+      """
+    await MockRequestScript.shared.reset(host: anthropicHost)
+    await MockRequestScript.shared.enqueue(MockResponse(json: body), host: anthropicHost)
+
+    let session = LanguageModelSession(model: makeAnthropicModel())
+    let response = try await session.respond(to: "hi")
+
+    #expect(response.finishReason == .stop)
+    let usage = try #require(response.usage)
+    #expect(usage.promptTokens == 16)  // 10 + 4 + 2
+    #expect(usage.completionTokens == 3)
+    #expect(usage.totalTokens == 19)
+  }
+
+  /// Verifies W1 FinishReason mapping for the four required stop_reasons
+  /// plus content-filter (refusal). Drives one request per case.
+  @Test func finishReasonMappedFromStopReason() async throws {
+    let cases: [(stopReason: String, expected: FinishReason)] = [
+      ("end_turn", .stop),
+      ("max_tokens", .length),
+      ("stop_sequence", .stop),
+      ("refusal", .contentFilter),
+    ]
+    for (stopReason, expected) in cases {
+      await MockRequestScript.shared.reset(host: anthropicHost)
+      let body = """
+        {
+          "id": "m",
+          "type": "message",
+          "role": "assistant",
+          "model": "claude-test",
+          "stop_reason": "\(stopReason)",
+          "content": [{"type": "text", "text": "x"}]
+        }
+        """
+      await MockRequestScript.shared.enqueue(MockResponse(json: body), host: anthropicHost)
+      let session = LanguageModelSession(model: makeAnthropicModel())
+      let response = try await session.respond(to: "x")
+      #expect(response.finishReason == expected, "stop_reason=\(stopReason)")
+    }
+  }
+
+  /// Verifies W5: a 429 response attaches ``RateLimitInfo`` parsed from
+  /// the response headers to the thrown ``GenerationError.rateLimited``.
+  @Test func rateLimited429AttachesRateLimitInfo() async throws {
+    await MockRequestScript.shared.reset(host: anthropicHost)
+    await MockRequestScript.shared.enqueue(
+      MockResponse(
+        statusCode: 429,
+        headers: [
+          "Content-Type": "application/json",
+          "anthropic-ratelimit-requests-limit": "1000",
+          "anthropic-ratelimit-requests-remaining": "0",
+          "retry-after": "42",
+          "request-id": "req_abc123",
+        ],
+        body: Data(#"{"error":{"type":"rate_limit","message":"throttled"}}"#.utf8)
+      ),
+      host: anthropicHost
+    )
+
+    let session = LanguageModelSession(model: makeAnthropicModel())
+    do {
+      _ = try await session.respond(to: "x")
+      Issue.record("expected rateLimited error")
+    } catch let LanguageModelSession.GenerationError.rateLimited(context) {
+      let info = try #require(context.rateLimit)
+      #expect(info.limitRequests == 1000)
+      #expect(info.remainingRequests == 0)
+      #expect(info.retryAfter == 42)
+      #expect(info.requestId == "req_abc123")
+    }
+  }
+
+  /// Verifies W2 I8a: the streaming tool-loop accumulates
+  /// `content_block_start` + `input_json_delta` deltas, dispatches the
+  /// tool on `message_stop`, and continues with a second request that
+  /// carries the tool_result back to Claude.
+  @Test func sseStreamingToolLoopRoundTrip() async throws {
+    await MockRequestScript.shared.reset(host: anthropicHost)
+
+    let firstSSE = """
+      event: message_start
+      data: {"type":"message_start","message":{"id":"m1","type":"message","role":"assistant","model":"claude-test","stop_reason":null,"content":[]}}
+
+      event: content_block_start
+      data: {"type":"content_block_start","index":0,"content_block":{"type":"tool_use","id":"tu_1","name":"anthropicEcho"}}
+
+      event: content_block_delta
+      data: {"type":"content_block_delta","index":0,"delta":{"type":"input_json_delta","partial_json":"{\\"text\\":\\"hi\\"}"}}
+
+      event: content_block_stop
+      data: {"type":"content_block_stop","index":0}
+
+      event: message_delta
+      data: {"type":"message_delta","delta":{"stop_reason":"tool_use","stop_sequence":null}}
+
+      event: message_stop
+      data: {"type":"message_stop"}
+
+
+      """
+
+    let secondSSE = """
+      event: message_start
+      data: {"type":"message_start","message":{"id":"m2","type":"message","role":"assistant","model":"claude-test","stop_reason":null,"content":[]}}
+
+      event: content_block_start
+      data: {"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}
+
+      event: content_block_delta
+      data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"done"}}
+
+      event: content_block_stop
+      data: {"type":"content_block_stop","index":0}
+
+      event: message_delta
+      data: {"type":"message_delta","delta":{"stop_reason":"end_turn","stop_sequence":null}}
+
+      event: message_stop
+      data: {"type":"message_stop"}
+
+
+      """
+
+    await MockRequestScript.shared.enqueue(
+      [
+        MockResponse(
+          statusCode: 200,
+          headers: ["Content-Type": "text/event-stream"],
+          body: Data(firstSSE.utf8)),
+        MockResponse(
+          statusCode: 200,
+          headers: ["Content-Type": "text/event-stream"],
+          body: Data(secondSSE.utf8)),
+      ],
+      host: anthropicHost
+    )
+
+    let session = LanguageModelSession(
+      model: makeAnthropicModel(),
+      tools: [AnthropicEchoTool()]
+    )
+    var last = ""
+    for try await snapshot in session.streamResponse(to: "please echo") {
+      last = snapshot.content
+    }
+    #expect(last == "done")
+
+    let consumed = await MockRequestScript.shared.consumedCount(host: anthropicHost)
+    #expect(consumed == 2)
+
+    // The second request must carry the tool_result with our echo output
+    // keyed by the tool_use id from round 1.
+    let requests = await MockRequestScript.shared.observedRequests(host: anthropicHost)
+    let secondBody = try #require(requests[1].httpBody)
+    let bodyString = try #require(String(data: secondBody, encoding: .utf8))
+    #expect(bodyString.contains("tool_result"))
+    #expect(bodyString.contains("tu_1"))
+    #expect(bodyString.contains("echo: hi"))
+  }
+
   /// Env-gated live test. Runs only when `ANTHROPIC_API_KEY` is set, which
   /// keeps CI green without leaking a key and lets local runs exercise
   /// the real endpoint. The `maxTokens` setting keeps the call tiny.
