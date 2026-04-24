@@ -1037,7 +1037,15 @@ import Foundation
       options: GenerationOptions
     ) -> sending LanguageModelSession.ResponseStream<Content> where Content: Generable {
       guard type == String.self else {
-        fatalError("MLXLanguageModel streaming only supports String content")
+        // Return a throwing stream instead of crashing the host. Mirrors
+        // the recoverable shape used by CoreML and Llama.
+        return LanguageModelSession.ResponseStream(
+          stream: AsyncThrowingStream { continuation in
+            continuation.finish(
+              throwing: MLXLanguageModelError.structuredStreamingUnsupported
+            )
+          }
+        )
       }
       guard Self.acquireGenerationSlot(for: session) else {
         let error = Self.concurrentSessionError()
@@ -1619,6 +1627,7 @@ import Foundation
   public enum MLXLanguageModelError: Error, LocalizedError, Sendable {
     case invalidVocabSize
     case unsupportedJSONValueType
+    case structuredStreamingUnsupported
 
     public var errorDescription: String? {
       switch self {
@@ -1626,6 +1635,9 @@ import Foundation
         return "Invalid vocabulary size for model output"
       case .unsupportedJSONValueType:
         return "Unsupported JSON value type for schema conversion"
+      case .structuredStreamingUnsupported:
+        return
+          "Structured streaming is not supported by MLXLanguageModel; only String content can be streamed"
       }
     }
   }
