@@ -125,4 +125,34 @@ struct MiniMaxWireTests {
     let fn = try #require(tools.first?["function"] as? [String: Any])
     #expect(fn["name"] as? String == "miniMaxEcho")
   }
+
+  // MARK: - W9 Usage + FinishReason (inherited via OpenAILanguageModel)
+
+  private static let usageBody = """
+    {
+      "id": "chatcmpl_mm_usage",
+      "choices": [{
+        "index": 0,
+        "message": {"role": "assistant", "content": "final answer"},
+        "finish_reason": "length"
+      }],
+      "usage": {"prompt_tokens": 2, "completion_tokens": 4, "total_tokens": 6}
+    }
+    """
+
+  @Test func populatesUsageAndFinishReason() async throws {
+    await MockRequestScript.shared.reset(host: miniMaxHost)
+    await MockRequestScript.shared.enqueue(
+      MockResponse(json: Self.usageBody), host: miniMaxHost)
+
+    let session = LanguageModelSession(model: makeMiniMaxModel())
+    let response = try await session.respond(to: "hello")
+
+    #expect(response.content == "final answer")
+    #expect(response.finishReason == .length)
+    let usage = try #require(response.usage)
+    #expect(usage.promptTokens == 2)
+    #expect(usage.completionTokens == 4)
+    #expect(usage.totalTokens == 6)
+  }
 }

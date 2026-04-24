@@ -137,4 +137,34 @@ struct OllamaWireTests {
     let consumed = await MockRequestScript.shared.consumedCount(host: ollamaHost)
     #expect(consumed == 2)
   }
+
+  // MARK: - W9 Usage + FinishReason
+
+  private static let ollamaUsageBody = """
+    {
+      "model": "qwen-test",
+      "created_at": "2026-04-23T00:00:00Z",
+      "message": {"role": "assistant", "content": "final answer"},
+      "done": true,
+      "done_reason": "stop",
+      "prompt_eval_count": 4,
+      "eval_count": 6
+    }
+    """
+
+  @Test func populatesUsageAndFinishReason() async throws {
+    await MockRequestScript.shared.reset(host: ollamaHost)
+    await MockRequestScript.shared.enqueue(
+      MockResponse(json: Self.ollamaUsageBody), host: ollamaHost)
+
+    let session = LanguageModelSession(model: makeOllamaModel())
+    let response = try await session.respond(to: "hello")
+
+    #expect(response.content == "final answer")
+    #expect(response.finishReason == .stop)
+    let usage = try #require(response.usage)
+    #expect(usage.promptTokens == 4)
+    #expect(usage.completionTokens == 6)
+    #expect(usage.totalTokens == 10)
+  }
 }

@@ -126,4 +126,34 @@ struct KimiWireTests {
     let fn = try #require(tools.first?["function"] as? [String: Any])
     #expect(fn["name"] as? String == "kimiEcho")
   }
+
+  // MARK: - W9 Usage + FinishReason (inherited via OpenAILanguageModel)
+
+  private static let usageBody = """
+    {
+      "id": "chatcmpl_kimi_usage",
+      "choices": [{
+        "index": 0,
+        "message": {"role": "assistant", "content": "final answer"},
+        "finish_reason": "stop"
+      }],
+      "usage": {"prompt_tokens": 3, "completion_tokens": 5, "total_tokens": 8}
+    }
+    """
+
+  @Test func populatesUsageAndFinishReason() async throws {
+    await MockRequestScript.shared.reset(host: kimiHost)
+    await MockRequestScript.shared.enqueue(
+      MockResponse(json: Self.usageBody), host: kimiHost)
+
+    let session = LanguageModelSession(model: makeKimiModel())
+    let response = try await session.respond(to: "hello")
+
+    #expect(response.content == "final answer")
+    #expect(response.finishReason == .stop)
+    let usage = try #require(response.usage)
+    #expect(usage.promptTokens == 3)
+    #expect(usage.completionTokens == 5)
+    #expect(usage.totalTokens == 8)
+  }
 }

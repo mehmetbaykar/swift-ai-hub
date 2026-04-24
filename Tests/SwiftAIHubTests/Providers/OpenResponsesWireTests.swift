@@ -136,4 +136,59 @@ struct OpenResponsesWireTests {
     let consumed = await MockRequestScript.shared.consumedCount(host: openResponsesHost)
     #expect(consumed == 2)
   }
+
+  // MARK: - W9 Usage + FinishReason + RateLimit
+
+  private static let usageBody = """
+    {
+      "id": "resp_usage",
+      "output": [{
+        "type": "message",
+        "role": "assistant",
+        "content": [{"type": "output_text", "text": "final answer"}]
+      }],
+      "finish_reason": "length",
+      "usage": {"input_tokens": 5, "output_tokens": 9, "total_tokens": 14}
+    }
+    """
+
+  @Test func populatesUsageAndFinishReason() async throws {
+    await MockRequestScript.shared.reset(host: openResponsesHost)
+    await MockRequestScript.shared.enqueue(
+      MockResponse(json: Self.usageBody), host: openResponsesHost)
+
+    let session = LanguageModelSession(model: makeOpenResponsesModel())
+    let response = try await session.respond(to: "hello")
+
+    #expect(response.content == "final answer")
+    #expect(response.finishReason == .length)
+    let usage = try #require(response.usage)
+    #expect(usage.promptTokens == 5)
+    #expect(usage.completionTokens == 9)
+    #expect(usage.totalTokens == 14)
+  }
+
+  @Test func rateLimited429AttachesRateLimitInfo() async throws {
+    await MockRequestScript.shared.reset(host: openResponsesHost)
+    await MockRequestScript.shared.enqueue(
+      MockResponse(
+        statusCode: 429,
+        headers: [
+          "Content-Type": "application/json",
+          "retry-after": "15",
+          "x-ratelimit-remaining-tokens": "0",
+        ],
+        body: Data(#"{"error":"rate_limited"}"#.utf8)
+      ), host: openResponsesHost)
+
+    let session = LanguageModelSession(model: makeOpenResponsesModel())
+    do {
+      _ = try await session.respond(to: "hi")
+      Issue.record("expected .rateLimited throw")
+    } catch let LanguageModelSession.GenerationError.rateLimited(ctx) {
+      let info = try #require(ctx.rateLimit)
+      #expect(info.retryAfter == 15)
+      #expect(info.remainingTokens == 0)
+    }
+  }
 }

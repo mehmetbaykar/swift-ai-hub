@@ -324,4 +324,65 @@ struct OpenAIWireTests {
     let consumed = await MockRequestScript.shared.consumedCount(host: openAIResponsesHost)
     #expect(consumed == 2)
   }
+
+  // MARK: - W9 Usage + FinishReason + RateLimit
+
+  private static let chatUsageBody = """
+    {
+      "id": "chatcmpl_3",
+      "choices": [{
+        "index": 0,
+        "message": {"role": "assistant", "content": "final answer"},
+        "finish_reason": "length"
+      }],
+      "usage": {"prompt_tokens": 11, "completion_tokens": 17, "total_tokens": 28}
+    }
+    """
+
+  /// Chat Completions: `usage` and `finishReason` must round-trip from the
+  /// response body onto the returned ``LanguageModelSession/Response``.
+  @Test func chatCompletionsPopulatesUsageAndFinishReason() async throws {
+    await MockRequestScript.shared.reset(host: openAIChatHost)
+    await MockRequestScript.shared.enqueue(
+      MockResponse(json: Self.chatUsageBody), host: openAIChatHost)
+
+    let session = LanguageModelSession(model: makeOpenAIChatModel())
+    let response = try await session.respond(to: "hello")
+
+    #expect(response.content == "final answer")
+    #expect(response.finishReason == .length)
+    let usage = try #require(response.usage)
+    #expect(usage.promptTokens == 11)
+    #expect(usage.completionTokens == 17)
+    #expect(usage.totalTokens == 28)
+  }
+
+  /// 429 on Chat Completions must be surfaced as a typed
+  /// `.rateLimited` with `RateLimitInfo` parsed from the response headers.
+  @Test func chatCompletionsRateLimited429AttachesRateLimitInfo() async throws {
+    await MockRequestScript.shared.reset(host: openAIChatHost)
+    await MockRequestScript.shared.enqueue(
+      MockResponse(
+        statusCode: 429,
+        headers: [
+          "Content-Type": "application/json",
+          "retry-after": "42",
+          "x-ratelimit-remaining-requests": "0",
+          "x-ratelimit-limit-requests": "60",
+        ],
+        body: Data(#"{"error":"rate_limited"}"#.utf8)
+      ), host: openAIChatHost)
+
+    let session = LanguageModelSession(model: makeOpenAIChatModel())
+
+    do {
+      _ = try await session.respond(to: "hello")
+      Issue.record("expected .rateLimited throw")
+    } catch let LanguageModelSession.GenerationError.rateLimited(ctx) {
+      let info = try #require(ctx.rateLimit)
+      #expect(info.retryAfter == 42)
+      #expect(info.remainingRequests == 0)
+      #expect(info.limitRequests == 60)
+    }
+  }
 }
