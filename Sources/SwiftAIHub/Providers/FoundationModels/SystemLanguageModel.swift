@@ -18,7 +18,9 @@
   /// ```swift
   /// let model = SystemLanguageModel()
   /// ```
-  @available(macOS 26.0, iOS 26.0, watchOS 26.0, tvOS 26.0, visionOS 26.0, *)
+  @available(macOS 26.0, iOS 26.0, visionOS 26.0, *)
+  @available(tvOS, unavailable)
+  @available(watchOS, unavailable)
   public actor SystemLanguageModel: LanguageModel {
     /// The reason the model is unavailable.
     public typealias UnavailableReason = FoundationModels.SystemLanguageModel.Availability
