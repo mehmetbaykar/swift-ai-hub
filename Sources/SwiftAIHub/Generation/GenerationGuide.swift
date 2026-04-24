@@ -1,6 +1,42 @@
 import struct Foundation.Decimal
 import class Foundation.NSDecimalNumber
 
+// MARK: - GenerationGuideConstraint
+
+/// Structured, read-only view of a ``GenerationGuide``'s constraint.
+///
+/// `GenerationGuide` stores flat fields for API / schema compatibility with
+/// Apple's Foundation Models. This enum offers an ergonomic, pattern-match
+/// friendly projection used by providers that want to switch on the shape of
+/// a guide (e.g. to emit a JSON-Schema fragment or a grammar rule).
+///
+/// The enum is derived; mutations must still go through the flat-field
+/// constructors on `GenerationGuide`.
+public indirect enum GenerationGuideConstraint<Value>: Sendable {
+  /// No constraint (default / dynamic Regex that couldn't be lifted).
+  case unspecified
+  /// Array element count must equal exactly this value.
+  case count(ClosedRange<Int>)
+  /// Array must have at least this many elements.
+  case minimumCount(Int)
+  /// Array may have at most this many elements.
+  case maximumCount(Int)
+  /// Numeric value must fall within this closed range (inclusive).
+  case range(ClosedRange<Double>)
+  /// Numeric value must be >= this bound (inclusive).
+  case minimum(Double)
+  /// Numeric value must be <= this bound (inclusive).
+  case maximum(Double)
+  /// String must match this regex pattern.
+  case pattern(String)
+  /// String must equal exactly this value.
+  case constant(String)
+  /// String must be one of these values.
+  case anyOf([String])
+  /// Element-level constraint for arrays.
+  case element(GenerationGuideConstraint<Any>)
+}
+
 /// Guides that control how values are generated.
 public struct GenerationGuide<Value>: Sendable {
   var minimumCount: Int?
@@ -29,6 +65,42 @@ public struct GenerationGuide<Value>: Sendable {
   init(stringEnumChoices: [String]) {
     self.stringEnumChoices = stringEnumChoices
   }
+
+  /// Structured view of the flat-field storage.
+  ///
+  /// Priority, when multiple fields are set, mirrors how schema emission
+  /// consumes them: string-shape (constant/anyOf/pattern) first, then array
+  /// count, then numeric bounds.
+  public var constraint: GenerationGuideConstraint<Value> {
+    if let choices = stringEnumChoices, !choices.isEmpty {
+      if choices.count == 1 {
+        return .constant(choices[0])
+      }
+      return .anyOf(choices)
+    }
+    if let pattern = pattern {
+      return .pattern(pattern)
+    }
+    if let min = minimumCount, let max = maximumCount {
+      return .count(min...max)
+    }
+    if let min = minimumCount {
+      return .minimumCount(min)
+    }
+    if let max = maximumCount {
+      return .maximumCount(max)
+    }
+    if let min = minimum, let max = maximum {
+      return .range(min...max)
+    }
+    if let min = minimum {
+      return .minimum(min)
+    }
+    if let max = maximum {
+      return .maximum(max)
+    }
+    return .unspecified
+  }
 }
 
 // MARK: - String Guides
@@ -46,8 +118,19 @@ extension GenerationGuide where Value == String {
   }
 
   /// Enforces that the string follows the pattern.
+  ///
+  /// When compiled with a deployment target >= macOS 15 / iOS 18 / visionOS 2,
+  /// uses `Regex._literalPattern` to lift the source pattern string from a
+  /// statically-constructed `Regex`. Dynamic regexes (built at runtime, or on
+  /// older OS versions) fall back to an unspecified guide — the pattern isn't
+  /// observable at the SDK layer.
   public static func pattern<Output>(_ regex: Regex<Output>) -> GenerationGuide<String> {
-    GenerationGuide<String>()
+    if #available(macOS 15.0, iOS 18.0, tvOS 18.0, watchOS 11.0, visionOS 2.0, *) {
+      if let pattern = regex._literalPattern {
+        return GenerationGuide<String>(pattern: pattern)
+      }
+    }
+    return GenerationGuide<String>()
   }
 
   /// Enforces that the string matches a regex pattern expressed as a string literal.

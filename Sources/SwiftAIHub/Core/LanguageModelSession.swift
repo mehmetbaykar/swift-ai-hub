@@ -255,6 +255,10 @@ public final class LanguageModelSession: @unchecked Sendable {
     public let content: Content
     public let rawContent: GeneratedContent
     public let transcriptEntries: ArraySlice<Transcript.Entry>
+    /// Token usage reported by the provider, when available.
+    public let usage: Usage?
+    /// Reason generation terminated, when reported by the provider.
+    public let finishReason: FinishReason?
 
     /// Creates a response value from generated content and transcript entries.
     /// - Parameters:
