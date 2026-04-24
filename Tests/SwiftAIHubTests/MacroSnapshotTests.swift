@@ -528,6 +528,23 @@
           case bounded(Int)
 
           nonisolated public init(_ generatedContent: GeneratedContent) throws {
+              // Shared CodingKey used by keyNotFound throws in the generated
+              // associated-value extraction code below. Mirrors T1's struct
+              // init (generateInitFromGeneratedContent) so both paths surface
+              // missing required fields the same way.
+              struct MissingFieldKey: CodingKey {
+                  var stringValue: String
+                  var intValue: Int? {
+                    nil
+                  }
+                  init(stringValue: String) {
+                    self.stringValue = stringValue
+                  }
+                  init?(intValue: Int) {
+                    nil
+                  }
+              }
+
               do {
                   guard case .structure(let properties, _) = generatedContent.kind else {
                       throw DecodingError.typeMismatch(
@@ -537,20 +554,8 @@
                   }
 
                   guard case .string(let caseValue) = properties["case"]?.kind else {
-                      struct Key: CodingKey {
-                          var stringValue: String
-                          var intValue: Int? {
-                            nil
-                          }
-                          init(stringValue: String) {
-                            self.stringValue = stringValue
-                          }
-                          init?(intValue: Int) {
-                            nil
-                          }
-                      }
                       throw DecodingError.keyNotFound(
-                          Key(stringValue: "case"),
+                          MissingFieldKey(stringValue: "case"),
                           DecodingError.Context(codingPath: [], debugDescription: "Missing 'case' property in enum data for SearchFilter")
                       )
                   }
@@ -559,35 +564,94 @@
 
                   switch caseValue {
                   case "keyword":
-              if let valueContent = valueContent,
-                 case .string(let stringValue) = valueContent.kind {
-                  self = .keyword(stringValue)
+              if let valueContent = valueContent {
+                  switch valueContent.kind {
+                  case .null:
+                      throw DecodingError.valueNotFound(
+                          String.self,
+                          DecodingError.Context(codingPath: [], debugDescription: "Required value for enum case 'keyword' was null")
+                      )
+                  default:
+                      self = .keyword(try valueContent.value(String.self))
+                  }
               } else {
-                  self = .keyword("")
+                  throw DecodingError.keyNotFound(
+                      MissingFieldKey(stringValue: "value"),
+                      DecodingError.Context(codingPath: [], debugDescription: "Missing value for enum case 'keyword' with associated type String")
+                  )
               }
                           case "dateRange":
               if let valueContent = valueContent {
-                  guard case .structure(let valueProperties, _) = valueContent.kind else {
+                  switch valueContent.kind {
+                  case .null:
+                      throw DecodingError.valueNotFound(
+                          [String: Any].self,
+                          DecodingError.Context(codingPath: [], debugDescription: "Value payload for enum case 'dateRange' was null")
+                      )
+                  case .structure(let valueProperties, _):
+                      let start: Double
+                      if let _fieldValue = valueProperties["start"] {
+                          switch _fieldValue.kind {
+                          case .null:
+                              throw DecodingError.valueNotFound(
+                                  Double.self,
+                                  DecodingError.Context(codingPath: [], debugDescription: "Required field 'start' for enum case 'dateRange' was null")
+                              )
+                          default:
+                              start = try _fieldValue.value(Double.self)
+                          }
+                      } else {
+                          throw DecodingError.keyNotFound(
+                              MissingFieldKey(stringValue: "start"),
+                              DecodingError.Context(codingPath: [], debugDescription: "Missing required field 'start' for enum case 'dateRange'")
+                          )
+                      }
+                              let end: Double
+                      if let _fieldValue = valueProperties["end"] {
+                          switch _fieldValue.kind {
+                          case .null:
+                              throw DecodingError.valueNotFound(
+                                  Double.self,
+                                  DecodingError.Context(codingPath: [], debugDescription: "Required field 'end' for enum case 'dateRange' was null")
+                              )
+                          default:
+                              end = try _fieldValue.value(Double.self)
+                          }
+                      } else {
+                          throw DecodingError.keyNotFound(
+                              MissingFieldKey(stringValue: "end"),
+                              DecodingError.Context(codingPath: [], debugDescription: "Missing required field 'end' for enum case 'dateRange'")
+                          )
+                      }
+                      self = .dateRange(start: start, end: end)
+                  default:
                       throw DecodingError.typeMismatch(
                           [String: Any].self,
                           DecodingError.Context(codingPath: [], debugDescription: "Expected structure for enum case 'dateRange' associated values")
                       )
                   }
-                  let start = try valueProperties["start"]?.value(Double.self) ?? 0.0
-                              let end = try valueProperties["end"]?.value(Double.self) ?? 0.0
-                  self = .dateRange(start: start, end: end)
               } else {
-                  throw DecodingError.valueNotFound(
-                      [String: Any].self,
-                      DecodingError.Context(codingPath: [], debugDescription: "Missing value data for enum case 'dateRange' with associated values")
+                  throw DecodingError.keyNotFound(
+                      MissingFieldKey(stringValue: "value"),
+                      DecodingError.Context(codingPath: [], debugDescription: "Missing 'value' payload for enum case 'dateRange' with associated values")
                   )
               }
                           case "bounded":
               if let valueContent = valueContent {
-                  let intValue = try valueContent.value(Int.self)
-                  self = .bounded(intValue)
+                  switch valueContent.kind {
+                  case .null:
+                      throw DecodingError.valueNotFound(
+                          Int.self,
+                          DecodingError.Context(codingPath: [], debugDescription: "Required value for enum case 'bounded' was null")
+                      )
+                  default:
+                      self = .bounded(try valueContent.value(Int.self))
+                  }
               } else {
-                  self = .bounded(0)
+                  throw DecodingError.keyNotFound(
+                      MissingFieldKey(stringValue: "value"),
+                      DecodingError.Context(codingPath: [], debugDescription: "Missing value for enum case 'bounded' with associated type Int")
+                  )
               }
                   default:
                       throw DecodingError.dataCorrupted(

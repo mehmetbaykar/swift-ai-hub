@@ -1189,6 +1189,17 @@ public struct GenerableMacro: MemberMacro, ExtensionMacro {
       return DeclSyntax(
         stringLiteral: """
           nonisolated public init(_ generatedContent: GeneratedContent) throws {
+              // Shared CodingKey used by keyNotFound throws in the generated
+              // associated-value extraction code below. Mirrors T1's struct
+              // init (generateInitFromGeneratedContent) so both paths surface
+              // missing required fields the same way.
+              struct MissingFieldKey: CodingKey {
+                  var stringValue: String
+                  var intValue: Int? { nil }
+                  init(stringValue: String) { self.stringValue = stringValue }
+                  init?(intValue: Int) { nil }
+              }
+
               do {
                   guard case .structure(let properties, _) = generatedContent.kind else {
                       throw DecodingError.typeMismatch(
@@ -1198,14 +1209,8 @@ public struct GenerableMacro: MemberMacro, ExtensionMacro {
                   }
 
                   guard case .string(let caseValue) = properties["case"]?.kind else {
-                      struct Key: CodingKey {
-                          var stringValue: String
-                          var intValue: Int? { nil }
-                          init(stringValue: String) { self.stringValue = stringValue }
-                          init?(intValue: Int) { nil }
-                      }
                       throw DecodingError.keyNotFound(
-                          Key(stringValue: "case"),
+                          MissingFieldKey(stringValue: "case"),
                           DecodingError.Context(codingPath: [], debugDescription: "Missing 'case' property in enum data for \(enumName)")
                       )
                   }
@@ -1264,57 +1269,100 @@ public struct GenerableMacro: MemberMacro, ExtensionMacro {
     }
   }
 
+  /// Returns the underlying type if `type` is an Optional primitive we can
+  /// synthesise code for (`Int?`, `String?`, ...), else nil. Handles both
+  /// sugared (`Int?`) and non-sugared (`Optional<Int>`) spellings — the
+  /// macro sees whichever syntax the user wrote verbatim via
+  /// `parameter.type.description`.
+  private static func optionalPrimitiveInnerType(_ type: String) -> String? {
+    let trimmed = type.trimmingCharacters(in: .whitespacesAndNewlines)
+    if trimmed.hasSuffix("?") {
+      let inner = String(trimmed.dropLast()).trimmingCharacters(in: .whitespacesAndNewlines)
+      return primitiveTypes.contains(inner) ? inner : nil
+    }
+    if trimmed.hasPrefix("Optional<") && trimmed.hasSuffix(">") {
+      let inner = String(trimmed.dropFirst("Optional<".count).dropLast())
+        .trimmingCharacters(in: .whitespacesAndNewlines)
+      return primitiveTypes.contains(inner) ? inner : nil
+    }
+    return nil
+  }
+
   private static func generateSingleValueCase(caseName: String, valueType: String) -> String {
+    // Unlabeled associated value. Schema + serialiser use `value` as the key,
+    // and that matches the outer `valueContent` binding in the enclosing
+    // switch. Non-optional required primitives throw on absence or .null so
+    // tool arguments decoded from malformed model output fail loudly instead
+    // of falling back to 0/""/false — this extends T1's struct-init pattern
+    // to the enum associated-value path (docs/02-macros.md:15).
+    if let inner = optionalPrimitiveInnerType(valueType) {
+      // Optional primitive: absence OR .null → .case(nil). Otherwise decode
+      // the inner primitive.
+      return """
+        case "\(caseName)":
+            if let valueContent = valueContent {
+                switch valueContent.kind {
+                case .null:
+                    self = .\(caseName)(nil)
+                default:
+                    self = .\(caseName)(try valueContent.value(\(inner).self))
+                }
+            } else {
+                self = .\(caseName)(nil)
+            }
+        """
+    }
+
+    func requiredPrimitiveCase(_ base: String) -> String {
+      return """
+        case "\(caseName)":
+            if let valueContent = valueContent {
+                switch valueContent.kind {
+                case .null:
+                    throw DecodingError.valueNotFound(
+                        \(base).self,
+                        DecodingError.Context(codingPath: [], debugDescription: "Required value for enum case '\(caseName)' was null")
+                    )
+                default:
+                    self = .\(caseName)(try valueContent.value(\(base).self))
+                }
+            } else {
+                throw DecodingError.keyNotFound(
+                    MissingFieldKey(stringValue: "value"),
+                    DecodingError.Context(codingPath: [], debugDescription: "Missing value for enum case '\(caseName)' with associated type \(base)")
+                )
+            }
+        """
+    }
+
     switch valueType {
     case "String":
-      return """
-        case "\(caseName)":
-            if let valueContent = valueContent,
-               case .string(let stringValue) = valueContent.kind {
-                self = .\(caseName)(stringValue)
-            } else {
-                self = .\(caseName)("")
-            }
-        """
+      return requiredPrimitiveCase("String")
     case "Int":
-      return """
-        case "\(caseName)":
-            if let valueContent = valueContent {
-                let intValue = try valueContent.value(Int.self)
-                self = .\(caseName)(intValue)
-            } else {
-                self = .\(caseName)(0)
-            }
-        """
+      return requiredPrimitiveCase("Int")
     case "Double":
-      return """
-        case "\(caseName)":
-            if let valueContent = valueContent {
-                let doubleValue = try valueContent.value(Double.self)
-                self = .\(caseName)(doubleValue)
-            } else {
-                self = .\(caseName)(0.0)
-            }
-        """
+      return requiredPrimitiveCase("Double")
+    case "Float":
+      return requiredPrimitiveCase("Float")
     case "Bool":
-      return """
-        case "\(caseName)":
-            if let valueContent = valueContent {
-                let boolValue = try valueContent.value(Bool.self)
-                self = .\(caseName)(boolValue)
-            } else {
-                self = .\(caseName)(false)
-            }
-        """
+      return requiredPrimitiveCase("Bool")
     default:
+      // Nested @Generable type: absence → keyNotFound, .null → valueNotFound.
       return """
         case "\(caseName)":
             if let valueContent = valueContent {
-                let associatedValue = try \(valueType)(valueContent)
-                self = .\(caseName)(associatedValue)
+                switch valueContent.kind {
+                case .null:
+                    throw DecodingError.valueNotFound(
+                        \(valueType).self,
+                        DecodingError.Context(codingPath: [], debugDescription: "Required value for enum case '\(caseName)' was null")
+                    )
+                default:
+                    self = .\(caseName)(try \(valueType)(valueContent))
+                }
             } else {
-                throw DecodingError.valueNotFound(
-                    \(valueType).self,
+                throw DecodingError.keyNotFound(
+                    MissingFieldKey(stringValue: "value"),
                     DecodingError.Context(codingPath: [], debugDescription: "Missing value for enum case '\(caseName)' with associated type \(valueType)")
                 )
             }
@@ -1326,49 +1374,124 @@ public struct GenerableMacro: MemberMacro, ExtensionMacro {
     caseName: String,
     associatedValues: [(label: String?, type: String)]
   ) -> String {
+    // Unified canonical names (HIGH #2): labeled fields keep source label;
+    // unlabeled fields use `param0`/`param1`/… which must match the schema
+    // and the serialiser. Non-optional fields throw on absence / .null
+    // instead of substituting placeholder defaults — same contract as
+    // T1's struct-init path (docs/02-macros.md:15).
     let valueExtractions = associatedValues.enumerated().map { index, assocValue in
-      let label = assocValue.label ?? "param\(index)"
+      let binding = assocValue.label ?? "param\(index)"
+      let key = binding
       let type = assocValue.type
+
+      func requiredPrimitive(_ base: String) -> String {
+        return """
+          let \(binding): \(base)
+          if let _fieldValue = valueProperties["\(key)"] {
+              switch _fieldValue.kind {
+              case .null:
+                  throw DecodingError.valueNotFound(
+                      \(base).self,
+                      DecodingError.Context(codingPath: [], debugDescription: "Required field '\(key)' for enum case '\(caseName)' was null")
+                  )
+              default:
+                  \(binding) = try _fieldValue.value(\(base).self)
+              }
+          } else {
+              throw DecodingError.keyNotFound(
+                  MissingFieldKey(stringValue: "\(key)"),
+                  DecodingError.Context(codingPath: [], debugDescription: "Missing required field '\(key)' for enum case '\(caseName)'")
+              )
+          }
+          """
+      }
+
+      if let inner = optionalPrimitiveInnerType(type) {
+        return """
+          let \(binding): \(type)
+          if let _fieldValue = valueProperties["\(key)"] {
+              switch _fieldValue.kind {
+              case .null:
+                  \(binding) = nil
+              default:
+                  \(binding) = try _fieldValue.value(\(inner).self)
+              }
+          } else {
+              \(binding) = nil
+          }
+          """
+      }
 
       switch type {
       case "String":
-        return "let \(label) = try valueProperties[\"\(label)\"]?.value(String.self) ?? \"\""
+        return requiredPrimitive("String")
       case "Int":
-        return "let \(label) = try valueProperties[\"\(label)\"]?.value(Int.self) ?? 0"
+        return requiredPrimitive("Int")
       case "Double":
-        return "let \(label) = try valueProperties[\"\(label)\"]?.value(Double.self) ?? 0.0"
+        return requiredPrimitive("Double")
+      case "Float":
+        return requiredPrimitive("Float")
       case "Bool":
-        return "let \(label) = try valueProperties[\"\(label)\"]?.value(Bool.self) ?? false"
+        return requiredPrimitive("Bool")
       default:
-        return
-          "let \(label) = try \(type)(valueProperties[\"\(label)\"] ?? GeneratedContent(\"{}\"))"
+        // Nested @Generable / array / dict: absence → keyNotFound,
+        // .null → valueNotFound. Previously fabricated `{}` payload.
+        return """
+          let \(binding): \(type)
+          if let _fieldValue = valueProperties["\(key)"] {
+              switch _fieldValue.kind {
+              case .null:
+                  throw DecodingError.valueNotFound(
+                      \(type).self,
+                      DecodingError.Context(codingPath: [], debugDescription: "Required field '\(key)' for enum case '\(caseName)' was null")
+                  )
+              default:
+                  \(binding) = try \(type)(_fieldValue)
+              }
+          } else {
+              throw DecodingError.keyNotFound(
+                  MissingFieldKey(stringValue: "\(key)"),
+                  DecodingError.Context(codingPath: [], debugDescription: "Missing required field '\(key)' for enum case '\(caseName)'")
+              )
+          }
+          """
       }
     }.joined(separator: "\n                    ")
 
     let parameterList = associatedValues.enumerated().map { index, assocValue in
-      let label = assocValue.label ?? "param\(index)"
+      let binding = assocValue.label ?? "param\(index)"
       if assocValue.label != nil {
-        return "\(label): \(label)"
+        return "\(binding): \(binding)"
       } else {
-        return label
+        return binding
       }
     }.joined(separator: ", ")
 
+    // Outer `value` key absence must surface as keyNotFound (matches
+    // per-field contract: absence -> keyNotFound, .null -> valueNotFound).
+    // `.null` on the outer key is a typeMismatch (cannot be a structure).
     return """
       case "\(caseName)":
           if let valueContent = valueContent {
-              guard case .structure(let valueProperties, _) = valueContent.kind else {
+              switch valueContent.kind {
+              case .null:
+                  throw DecodingError.valueNotFound(
+                      [String: Any].self,
+                      DecodingError.Context(codingPath: [], debugDescription: "Value payload for enum case '\(caseName)' was null")
+                  )
+              case .structure(let valueProperties, _):
+                  \(valueExtractions)
+                  self = .\(caseName)(\(parameterList))
+              default:
                   throw DecodingError.typeMismatch(
                       [String: Any].self,
                       DecodingError.Context(codingPath: [], debugDescription: "Expected structure for enum case '\(caseName)' associated values")
                   )
               }
-              \(valueExtractions)
-              self = .\(caseName)(\(parameterList))
           } else {
-              throw DecodingError.valueNotFound(
-                  [String: Any].self,
-                  DecodingError.Context(codingPath: [], debugDescription: "Missing value data for enum case '\(caseName)' with associated values")
+              throw DecodingError.keyNotFound(
+                  MissingFieldKey(stringValue: "value"),
+                  DecodingError.Context(codingPath: [], debugDescription: "Missing 'value' payload for enum case '\(caseName)' with associated values")
               )
           }
       """
@@ -1384,11 +1507,16 @@ public struct GenerableMacro: MemberMacro, ExtensionMacro {
     if hasAnyAssociatedValues {
       let switchCases = cases.map { enumCase in
         if enumCase.associatedValues.isEmpty {
+          // Schema declares this payload choice as an empty object (see
+          // generateEnumGenerationSchemaProperty). Serialiser must match:
+          // emit .structure with no fields, not a bare string. Otherwise a
+          // round-trip through a schema-obeying model would type-mismatch
+          // on decode of the emitted sentinel.
           return """
             case .\(enumCase.name):
                 return GeneratedContent(properties: [
                     "case": GeneratedContent("\(enumCase.name)"),
-                    "value": GeneratedContent("")
+                    "value": GeneratedContent(kind: .structure(properties: [:], orderedKeys: []))
                 ])
             """
         } else if enumCase.isSingleUnlabeledValue {
@@ -1436,7 +1564,19 @@ public struct GenerableMacro: MemberMacro, ExtensionMacro {
   {
     // All Generable types (including primitives Int/Double/Bool/String) carry
     // their own typed `generatedContent`, so we never need to string-cast.
-    _ = valueType
+    // Optional primitive payloads (`Int?`, `String?`, ...) aren't themselves
+    // Generable — unwrap and serialise the inner value, emitting .null when
+    // nil. The decoder's single-value optional branch accepts .null as
+    // `.case(nil)`, so this round-trips.
+    if optionalPrimitiveInnerType(valueType) != nil {
+      return """
+        case .\(caseName)(let value):
+            return GeneratedContent(properties: [
+                "case": GeneratedContent("\(caseName)"),
+                "value": value.map { $0.generatedContent } ?? GeneratedContent(kind: .null)
+            ])
+        """
+    }
     return """
       case .\(caseName)(let value):
           return GeneratedContent(properties: [
@@ -1457,6 +1597,13 @@ public struct GenerableMacro: MemberMacro, ExtensionMacro {
 
     let propertyMappings = associatedValues.enumerated().map { index, assocValue in
       let label = assocValue.label ?? "param\(index)"
+      // Optional primitive fields (`Int?`, etc.) aren't Generable themselves,
+      // so `.generatedContent` doesn't type-check. Unwrap and emit .null when
+      // nil — decoder's optional-primitive branch accepts that as nil.
+      if optionalPrimitiveInnerType(assocValue.type) != nil {
+        return
+          "\"\(label)\": \(label).map { $0.generatedContent } ?? GeneratedContent(kind: .null)"
+      }
       return "\"\(label)\": \(label).generatedContent"
     }.joined(separator: ",\n                        ")
 
@@ -1497,14 +1644,23 @@ public struct GenerableMacro: MemberMacro, ExtensionMacro {
           return
             "DynamicGenerationSchema(name: \"\(enumName)_\(enumCase.name)_Payload\", properties: [])"
         } else if enumCase.isSingleUnlabeledValue {
-          let valueType = enumCase.associatedValues[0].type
+          // Optional primitives (`Int?`, `String?`, ...) aren't Generable
+          // directly — emit the inner type's schema and let the decoder
+          // accept absence/.null as nil.
+          let raw = enumCase.associatedValues[0].type
+          let valueType = optionalPrimitiveInnerType(raw) ?? raw
           return "DynamicGenerationSchema(type: \(valueType).self)"
         } else {
-          // multi-arg: emit an object schema with _0, _1, ... or labeled fields
+          // Multi-arg payload: property names MUST match the decoder and
+          // serialiser. Labeled fields keep source label; unlabeled use
+          // `param0`/`param1`/… (HIGH #2: previously `_0`/`_1`, which left
+          // the model obeying the schema but the decoder reading different
+          // keys, silently fabricating 0/"").
           let propertyList = enumCase.associatedValues.enumerated().map { index, av in
-            let name = av.label ?? "_\(index)"
+            let name = av.label ?? "param\(index)"
+            let schemaType = optionalPrimitiveInnerType(av.type) ?? av.type
             return
-              "DynamicGenerationSchema.Property(name: \"\(name)\", schema: DynamicGenerationSchema(type: \(av.type).self))"
+              "DynamicGenerationSchema.Property(name: \"\(name)\", schema: DynamicGenerationSchema(type: \(schemaType).self))"
           }.joined(separator: ", ")
           return
             "DynamicGenerationSchema(name: \"\(enumName)_\(enumCase.name)_Payload\", properties: [\(propertyList)])"
