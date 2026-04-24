@@ -58,7 +58,7 @@ struct StreamTranscriptRaceSuite {
   }
 
   /// Abandoned stream (created but never iterated) must not mutate transcript.
-  @Test func abandonedStreamLeavesNoTranscriptEntry() async throws {
+  @Test func `abandoned stream leaves no transcript entry`() async throws {
     let session = LanguageModelSession(model: RaceModel(), tools: [], instructions: nil)
     let countBefore = Array(session.transcript).count
 
@@ -75,7 +75,7 @@ struct StreamTranscriptRaceSuite {
 
   /// Concurrent respond + streamResponse must serialise so the transcript
   /// never contains two prompts without a response between them.
-  @Test func concurrentRespondAndStreamSerialise() async throws {
+  @Test func `concurrent respond and stream serialise`() async throws {
     let session = LanguageModelSession(model: RaceModel(), tools: [], instructions: nil)
 
     await withTaskGroup(of: Void.self) { group in

@@ -61,7 +61,7 @@ final class SlowStreamingModel: LanguageModel, @unchecked Sendable {
   }
 }
 
-@Test func streamCancellationReleasesRespondingStateAndGate() async throws {
+@Test func `stream cancellation releases responding state and gate`() async throws {
   let session = LanguageModelSession(
     model: SlowStreamingModel(),
     tools: [],

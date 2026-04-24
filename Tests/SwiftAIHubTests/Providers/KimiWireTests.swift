@@ -64,7 +64,7 @@ private let kimiToolCallBody = """
 
 @Suite(.serialized)
 struct KimiWireTests {
-  @Test func singleShotFinalAnswer() async throws {
+  @Test func `single shot final answer`() async throws {
     await MockRequestScript.shared.reset(host: kimiHost)
     await MockRequestScript.shared.enqueue(
       MockResponse(json: kimiFinalAnswerBody), host: kimiHost)
@@ -79,7 +79,7 @@ struct KimiWireTests {
     #expect(request.value(forHTTPHeaderField: "Authorization") == "Bearer test-key")
   }
 
-  @Test func toolCallThenFinalAnswer() async throws {
+  @Test func `tool call then final answer`() async throws {
     await MockRequestScript.shared.reset(host: kimiHost)
     await MockRequestScript.shared.enqueue(
       [
@@ -99,7 +99,7 @@ struct KimiWireTests {
   }
 
   // M14: docs/04 §Testing — Kimi wraps OpenAI chat-completions.
-  @Test func requestBodySerialization() async throws {
+  @Test func `request body serialization`() async throws {
     await MockRequestScript.shared.reset(host: kimiHost)
     await MockRequestScript.shared.enqueue(
       MockResponse(json: kimiFinalAnswerBody), host: kimiHost)
@@ -141,7 +141,7 @@ struct KimiWireTests {
     }
     """
 
-  @Test func populatesUsageAndFinishReason() async throws {
+  @Test func `populates usage and finish reason`() async throws {
     await MockRequestScript.shared.reset(host: kimiHost)
     await MockRequestScript.shared.enqueue(
       MockResponse(json: Self.usageBody), host: kimiHost)

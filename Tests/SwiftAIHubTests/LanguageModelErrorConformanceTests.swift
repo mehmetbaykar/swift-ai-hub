@@ -9,8 +9,8 @@ import Testing
 @Suite("LanguageModelError umbrella conformance")
 struct LanguageModelErrorConformanceTests {
 
-  @Test("isRetryableHTTPStatus maps 408/425/429 and 5xx to true, others false")
-  func retryableStatusMap() {
+  @Test
+  func `isRetryableHTTPStatus maps 408/425/429 and 5xx to true, others false`() {
     #expect(isRetryableHTTPStatus(408))
     #expect(isRetryableHTTPStatus(425))
     #expect(isRetryableHTTPStatus(429))
@@ -23,16 +23,16 @@ struct LanguageModelErrorConformanceTests {
     #expect(!isRetryableHTTPStatus(404))
   }
 
-  @Test("OpenAILanguageModelError conforms to LanguageModelError")
-  func openAIConformance() {
+  @Test
+  func `OpenAILanguageModelError conforms to LanguageModelError`() {
     let error: any LanguageModelError = OpenAILanguageModelError.noResponseGenerated
     #expect(error.httpStatus == nil)
     #expect(error.isRetryable == false)
     #expect(!error.providerMessage.isEmpty)
   }
 
-  @Test("OpenResponsesLanguageModelError conforms to LanguageModelError")
-  func openResponsesConformance() {
+  @Test
+  func `OpenResponsesLanguageModelError conforms to LanguageModelError`() {
     let noResponse: any LanguageModelError = OpenResponsesLanguageModelError.noResponseGenerated
     #expect(noResponse.httpStatus == nil)
     #expect(noResponse.isRetryable == false)
@@ -44,8 +44,8 @@ struct LanguageModelErrorConformanceTests {
     #expect(!streamFailed.providerMessage.isEmpty)
   }
 
-  @Test("GeminiError conforms to LanguageModelError")
-  func geminiConformance() {
+  @Test
+  func `GeminiError conforms to LanguageModelError`() {
     let error: any LanguageModelError = GeminiError.noCandidate
     #expect(error.httpStatus == nil)
     #expect(error.isRetryable == false)
@@ -53,8 +53,8 @@ struct LanguageModelErrorConformanceTests {
   }
 
   #if MLX
-    @Test("MLXLanguageModelError conforms to LanguageModelError")
-    func mlxConformance() {
+    @Test
+    func `MLXLanguageModelError conforms to LanguageModelError`() {
       let error: any LanguageModelError = MLXLanguageModelError.invalidVocabSize
       #expect(error.httpStatus == nil)
       #expect(error.isRetryable == false)
@@ -62,8 +62,8 @@ struct LanguageModelErrorConformanceTests {
     }
   #endif
 
-  @Test("providerMessage redacts Authorization headers so secrets cannot leak")
-  func providerMessageRedactsSecrets() {
+  @Test
+  func `providerMessage redacts Authorization headers so secrets cannot leak`() {
     // Provider-typed errors do not currently carry raw HTTP bodies, but the
     // contract says providerMessage must pass through redactSensitiveHeaders.
     // Spot-check that the redactor a conformance calls would scrub a bearer
@@ -74,8 +74,8 @@ struct LanguageModelErrorConformanceTests {
     #expect(redacted.contains("<redacted>"))
   }
 
-  @Test("catch-as-LanguageModelError works across provider boundaries")
-  func catchAsProtocol() {
+  @Test
+  func `catch-as-LanguageModelError works across provider boundaries`() {
     func throwIt() throws {
       throw OpenAILanguageModelError.noResponseGenerated
     }

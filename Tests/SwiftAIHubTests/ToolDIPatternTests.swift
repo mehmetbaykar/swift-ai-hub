@@ -57,7 +57,7 @@ struct EchoMemberwiseInitTool {
   }
 }
 
-@Test func memberwiseInitToolCompilesAndDispatches() async throws {
+@Test func `memberwise init tool compiles and dispatches`() async throws {
   let sink = InMemorySink()
   let tool = EchoMemberwiseInitTool(sink: sink)
   let args = try EchoMemberwiseInitTool.Arguments(
@@ -74,7 +74,7 @@ struct EchoMemberwiseInitTool {
   #expect(seen == ["memberwise"])
 }
 
-@Test func echoToolDIFieldSurvivesDispatch() async throws {
+@Test func `echo tool di field survives dispatch`() async throws {
   let sink = InMemorySink()
   let tool = EchoWithSinkTool(sink: sink)
   let args = try EchoWithSinkTool.Arguments(

@@ -20,7 +20,7 @@ struct CodableTestOuter {
   var inner: CodableTestInner
 }
 
-@Test func generableStructRoundTripsThroughJSONCoder() throws {
+@Test func `generable struct round trips through json coder`() throws {
   let original = CodableTestOuter(
     name: "alpha",
     score: 42,
@@ -43,7 +43,7 @@ enum CodableTestPriority: String, CaseIterable {
   case high
 }
 
-@Test func generableEnumEncodesAsRawValue() throws {
+@Test func `generable enum encodes as raw value`() throws {
   let encoded = try JSONEncoder().encode(CodableTestPriority.high)
   let decoded = try JSONDecoder().decode(CodableTestPriority.self, from: encoded)
 

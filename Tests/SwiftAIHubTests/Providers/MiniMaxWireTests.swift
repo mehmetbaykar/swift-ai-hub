@@ -64,7 +64,7 @@ private let miniMaxToolCallBody = """
 
 @Suite(.serialized)
 struct MiniMaxWireTests {
-  @Test func singleShotFinalAnswer() async throws {
+  @Test func `single shot final answer`() async throws {
     await MockRequestScript.shared.reset(host: miniMaxHost)
     await MockRequestScript.shared.enqueue(
       MockResponse(json: miniMaxFinalAnswerBody), host: miniMaxHost)
@@ -79,7 +79,7 @@ struct MiniMaxWireTests {
     #expect(request.value(forHTTPHeaderField: "Authorization") == "Bearer test-key")
   }
 
-  @Test func toolCallThenFinalAnswer() async throws {
+  @Test func `tool call then final answer`() async throws {
     await MockRequestScript.shared.reset(host: miniMaxHost)
     await MockRequestScript.shared.enqueue(
       [
@@ -99,7 +99,7 @@ struct MiniMaxWireTests {
   }
 
   // M14: docs/04 §Testing — MiniMax wraps OpenAI chat-completions.
-  @Test func requestBodySerialization() async throws {
+  @Test func `request body serialization`() async throws {
     await MockRequestScript.shared.reset(host: miniMaxHost)
     await MockRequestScript.shared.enqueue(
       MockResponse(json: miniMaxFinalAnswerBody), host: miniMaxHost)
@@ -140,7 +140,7 @@ struct MiniMaxWireTests {
     }
     """
 
-  @Test func populatesUsageAndFinishReason() async throws {
+  @Test func `populates usage and finish reason`() async throws {
     await MockRequestScript.shared.reset(host: miniMaxHost)
     await MockRequestScript.shared.enqueue(
       MockResponse(json: Self.usageBody), host: miniMaxHost)

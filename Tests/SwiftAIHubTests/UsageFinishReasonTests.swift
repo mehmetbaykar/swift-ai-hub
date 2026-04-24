@@ -6,7 +6,7 @@ import Testing
 
 @testable import SwiftAIHub
 
-@Test func usageCodableRoundTrip() throws {
+@Test func `usage codable round trip`() throws {
   let original = Usage(promptTokens: 42, completionTokens: 17, totalTokens: 59)
 
   let data = try JSONEncoder().encode(original)
@@ -18,7 +18,7 @@ import Testing
   #expect(decoded.totalTokens == 59)
 }
 
-@Test func usageCodableRoundTripWithNils() throws {
+@Test func `usage codable round trip with nils`() throws {
   let original = Usage()
 
   let data = try JSONEncoder().encode(original)
@@ -30,7 +30,7 @@ import Testing
   #expect(decoded.totalTokens == nil)
 }
 
-@Test func finishReasonCodableKnownCases() throws {
+@Test func `finish reason codable known cases`() throws {
   let cases: [FinishReason] = [.stop, .length, .toolCalls, .contentFilter, .error]
 
   for value in cases {
@@ -40,7 +40,7 @@ import Testing
   }
 }
 
-@Test func finishReasonCodableOtherPreservesRawString() throws {
+@Test func `finish reason codable other preserves raw string`() throws {
   let original = FinishReason.other("provider_specific_reason")
 
   let data = try JSONEncoder().encode(original)
@@ -50,7 +50,7 @@ import Testing
   #expect(decoded.rawValue == "provider_specific_reason")
 }
 
-@Test func finishReasonDecodesUnknownStringAsOther() throws {
+@Test func `finish reason decodes unknown string as other`() throws {
   let data = Data("\"mystery\"".utf8)
 
   let decoded = try JSONDecoder().decode(FinishReason.self, from: data)
@@ -58,14 +58,14 @@ import Testing
   #expect(decoded == .other("mystery"))
 }
 
-@Test func finishReasonEncodesKnownCaseAsCanonicalString() throws {
+@Test func `finish reason encodes known case as canonical string`() throws {
   let data = try JSONEncoder().encode(FinishReason.toolCalls)
   let json = String(decoding: data, as: UTF8.self)
 
   #expect(json == "\"tool_calls\"")
 }
 
-@Test func responseDefaultsUsageAndFinishReasonToNil() {
+@Test func `response defaults usage and finish reason to nil`() {
   let raw = GeneratedContent("hello")
   let response = LanguageModelSession.Response<String>(
     content: "hello",
@@ -77,7 +77,7 @@ import Testing
   #expect(response.finishReason == nil)
 }
 
-@Test func responseSurfacesUsageAndFinishReasonWhenProvided() {
+@Test func `response surfaces usage and finish reason when provided`() {
   let raw = GeneratedContent("done")
   let usage = Usage(promptTokens: 10, completionTokens: 5, totalTokens: 15)
   let response = LanguageModelSession.Response<String>(

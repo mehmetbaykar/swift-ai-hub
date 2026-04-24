@@ -69,7 +69,7 @@ actor ActiveGauge {
   }
 }
 
-@Test func concurrentRespondCallsSerializeOnGate() async throws {
+@Test func `concurrent respond calls serialize on gate`() async throws {
   let model = MarkerModel()
   let session = LanguageModelSession(
     model: model,

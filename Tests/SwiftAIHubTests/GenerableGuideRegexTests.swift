@@ -19,7 +19,7 @@ struct Tagged {
 
 // MARK: - Schema carries the pattern
 
-@Test func guideRegexPropagatesPatternToSchema() throws {
+@Test func `guide regex propagates pattern to schema`() throws {
   let encoder = JSONEncoder()
   encoder.outputFormatting = [.sortedKeys]
   let data = try encoder.encode(Tagged.generationSchema)
@@ -30,7 +30,7 @@ struct Tagged {
   #expect(json.contains("\"pattern\":\"#[0-9A-Fa-f]{6}\""))
 }
 
-@Test func guideRegexRoundTripsWithoutEscapingCorruption() throws {
+@Test func `guide regex round trips without escaping corruption`() throws {
   let encoder = JSONEncoder()
   let data = try encoder.encode(Tagged.generationSchema)
   let decoded = try JSONDecoder().decode(GenerationSchema.self, from: data)
@@ -55,7 +55,7 @@ struct UnpatternedTag {
   var name: String
 }
 
-@Test func guideWithoutRegexLeavesPatternNil() throws {
+@Test func `guide without regex leaves pattern nil`() throws {
   let encoder = JSONEncoder()
   let data = try encoder.encode(UnpatternedTag.generationSchema)
   let json = try #require(String(data: data, encoding: .utf8))
@@ -79,7 +79,7 @@ struct UnitTagged {
   var locale: String
 }
 
-@Test func anyOfGuidePropagatesEnumChoices() throws {
+@Test func `any of guide propagates enum choices`() throws {
   let encoder = JSONEncoder()
   encoder.outputFormatting = [.sortedKeys]
   let data = try encoder.encode(UnitTagged.generationSchema)
@@ -87,7 +87,7 @@ struct UnitTagged {
   #expect(json.contains("\"enum\":[\"celsius\",\"fahrenheit\"]"))
 }
 
-@Test func constantGuidePropagatesSingleEnumChoice() throws {
+@Test func `constant guide propagates single enum choice`() throws {
   let encoder = JSONEncoder()
   let data = try encoder.encode(UnitTagged.generationSchema)
   let json = try #require(String(data: data, encoding: .utf8))

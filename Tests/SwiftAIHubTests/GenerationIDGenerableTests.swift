@@ -13,7 +13,7 @@ private struct Item {
   @Guide(description: "Name") var name: String
 }
 
-@Test func generationIDSchemaIsStringType() {
+@Test func `generation id schema is string type`() {
   let schema = GenerationID.generationSchema
   guard case .string = schema.root else {
     Issue.record("GenerationID schema root should be .string, got \(schema.root)")
@@ -21,7 +21,7 @@ private struct Item {
   }
 }
 
-@Test func itemSchemaRendersIDAsStringProperty() {
+@Test func `item schema renders id as string property`() {
   let schema = Item.generationSchema
   // The root is a ref to the type's object definition in `defs`.
   guard case .ref(let rootName) = schema.root,
@@ -52,7 +52,7 @@ private struct Item {
   }
 }
 
-@Test func itemRoundTripsThroughGeneratedContent() throws {
+@Test func `item round trips through generated content`() throws {
   let content = GeneratedContent(
     properties: [
       "id": GeneratedContent(kind: .string("abc-123")),

@@ -64,7 +64,7 @@ private let huggingFaceToolCallBody = """
 
 @Suite(.serialized)
 struct HuggingFaceWireTests {
-  @Test func singleShotFinalAnswer() async throws {
+  @Test func `single shot final answer`() async throws {
     await MockRequestScript.shared.reset(host: huggingFaceHost)
     await MockRequestScript.shared.enqueue(
       MockResponse(json: huggingFaceFinalAnswerBody), host: huggingFaceHost)
@@ -82,7 +82,7 @@ struct HuggingFaceWireTests {
     #expect(request.value(forHTTPHeaderField: "Authorization") == "Bearer test-key")
   }
 
-  @Test func toolCallThenFinalAnswer() async throws {
+  @Test func `tool call then final answer`() async throws {
     await MockRequestScript.shared.reset(host: huggingFaceHost)
     await MockRequestScript.shared.enqueue(
       [
@@ -103,7 +103,7 @@ struct HuggingFaceWireTests {
 
   // M14: docs/04 §Testing — HuggingFace wraps OpenAI's chat-completions
   // body; verify the wrapped request still carries the expected fields.
-  @Test func requestBodySerialization() async throws {
+  @Test func `request body serialization`() async throws {
     await MockRequestScript.shared.reset(host: huggingFaceHost)
     await MockRequestScript.shared.enqueue(
       MockResponse(json: huggingFaceFinalAnswerBody), host: huggingFaceHost)
@@ -150,7 +150,7 @@ struct HuggingFaceWireTests {
 
   /// Tool-less String path must populate both `usage` and `finishReason`
   /// from the HF (OpenAI-compatible) response body.
-  @Test func usageAndFinishReasonPopulated() async throws {
+  @Test func `usage and finish reason populated`() async throws {
     await MockRequestScript.shared.reset(host: huggingFaceHost)
     await MockRequestScript.shared.enqueue(
       MockResponse(json: Self.huggingFaceUsageBody), host: huggingFaceHost)
@@ -170,7 +170,7 @@ struct HuggingFaceWireTests {
   /// the `options.wait_for_model` payload flag. The header form works with
   /// the router + dedicated endpoints, the payload form with the serverless
   /// API — we emit both so any backend picks it up.
-  @Test func waitForModelEmitsHeaderAndPayload() async throws {
+  @Test func `wait for model emits header and payload`() async throws {
     await MockRequestScript.shared.reset(host: huggingFaceHost)
     await MockRequestScript.shared.enqueue(
       MockResponse(json: huggingFaceFinalAnswerBody), host: huggingFaceHost)
@@ -194,7 +194,7 @@ struct HuggingFaceWireTests {
   /// HF returns 503 with an `estimated_time` payload when a model is still
   /// loading. Must translate into the typed `.modelDownloading` error rather
   /// than the generic OpenAI-ish error surface.
-  @Test func http503MapsToModelDownloading() async throws {
+  @Test func `http 503 maps to model downloading`() async throws {
     await MockRequestScript.shared.reset(host: huggingFaceHost)
     let envelope = """
       {"error": "Model is loading", "estimated_time": 42.5}
@@ -217,7 +217,7 @@ struct HuggingFaceWireTests {
 
   /// Dedicated Inference Endpoint URLs are used verbatim; the router default
   /// is only applied when the caller does not pick an endpoint.
-  @Test func dedicatedEndpointUsesProvidedURL() async throws {
+  @Test func `dedicated endpoint uses provided url`() async throws {
     let dedicatedHost = "dedicated-hf.test"
     await MockRequestScript.shared.reset(host: dedicatedHost)
     await MockRequestScript.shared.enqueue(
@@ -242,7 +242,7 @@ struct HuggingFaceWireTests {
 
   /// When no explicit token is provided the provider must fall back to the
   /// `HF_TOKEN` environment variable before issuing the Authorization header.
-  @Test func envTokenFallbackUsedWhenExplicitTokenEmpty() async throws {
+  @Test func `env token fallback used when explicit token empty`() async throws {
     setenv("HF_TOKEN", "env-token-abc", 1)
     defer { unsetenv("HF_TOKEN") }
 

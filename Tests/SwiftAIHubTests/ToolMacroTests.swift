@@ -37,29 +37,29 @@ struct EchoTool {
   }
 }
 
-@Test func toolSchemaDerivesNameFromType() {
+@Test func `tool schema derives name from type`() {
   #expect(GetCurrentDateTool.schema.name == "getCurrentDate")
   #expect(EchoTool.schema.name == "echo")
 }
 
-@Test func toolSchemaCapturesDescription() {
+@Test func `tool schema captures description`() {
   #expect(GetCurrentDateTool.schema.description == "Returns the current date/time.")
 }
 
-@Test func toolSchemaExposesGenerationSchema() {
+@Test func `tool schema exposes generation schema`() {
   // Schema surfaces the nested Arguments' generationSchema directly.
   _ = GetCurrentDateTool.schema.generationSchema
   _ = EchoTool.schema.generationSchema
 }
 
-@Test func toolInstanceExposesProtocolProperties() {
+@Test func `tool instance exposes protocol properties`() {
   let tool = GetCurrentDateTool()
   #expect(tool.name == "getCurrentDate")
   #expect(tool.description == "Returns the current date/time.")
   _ = tool.parameters
 }
 
-@Test func toolArgumentsDecodeRequiredFields() throws {
+@Test func `tool arguments decode required fields`() throws {
   let content = GeneratedContent(
     kind: .structure(
       properties: [
@@ -74,7 +74,7 @@ struct EchoTool {
   #expect(args.count == 2)
 }
 
-@Test func toolCallRoundTrip() async throws {
+@Test func `tool call round trip`() async throws {
   let tool = EchoTool()
   let args = try EchoTool.Arguments(
     GeneratedContent(

@@ -106,7 +106,7 @@ struct OpenAIWireTests {
 
   // MARK: - Chat Completions variant
 
-  @Test func chatCompletionsSingleShotFinalAnswer() async throws {
+  @Test func `chat completions single shot final answer`() async throws {
     await MockRequestScript.shared.reset(host: openAIChatHost)
     await MockRequestScript.shared.enqueue(
       MockResponse(json: chatFinalAnswerBody), host: openAIChatHost)
@@ -119,7 +119,7 @@ struct OpenAIWireTests {
     #expect(consumed == 1)
   }
 
-  @Test func chatCompletionsToolCallThenFinalAnswer() async throws {
+  @Test func `chat completions tool call then final answer`() async throws {
     await MockRequestScript.shared.reset(host: openAIChatHost)
     await MockRequestScript.shared.enqueue(
       [
@@ -147,7 +147,7 @@ struct OpenAIWireTests {
     #expect(bodyString.contains("echo: hi"))
   }
 
-  @Test func chatCompletionsRequestSerialization() async throws {
+  @Test func `chat completions request serialization`() async throws {
     await MockRequestScript.shared.reset(host: openAIChatHost)
     await MockRequestScript.shared.enqueue(
       MockResponse(json: chatFinalAnswerBody), host: openAIChatHost)
@@ -194,7 +194,7 @@ struct OpenAIWireTests {
     #expect(properties["text"] != nil)
   }
 
-  @Test func chatCompletionsMaxToolCallRoundsOneThrowsOnSecondToolCall() async throws {
+  @Test func `chat completions max tool call rounds one throws on second tool call`() async throws {
     await MockRequestScript.shared.reset(host: openAIChatHost)
     await MockRequestScript.shared.enqueue(
       [
@@ -218,7 +218,7 @@ struct OpenAIWireTests {
 
   // MARK: - Responses variant
 
-  @Test func responsesSingleShotFinalAnswer() async throws {
+  @Test func `responses single shot final answer`() async throws {
     await MockRequestScript.shared.reset(host: openAIResponsesHost)
     await MockRequestScript.shared.enqueue(
       MockResponse(json: responsesFinalAnswerBody), host: openAIResponsesHost)
@@ -231,7 +231,7 @@ struct OpenAIWireTests {
     #expect(consumed == 1)
   }
 
-  @Test func responsesToolCallThenFinalAnswer() async throws {
+  @Test func `responses tool call then final answer`() async throws {
     await MockRequestScript.shared.reset(host: openAIResponsesHost)
     await MockRequestScript.shared.enqueue(
       [
@@ -259,7 +259,7 @@ struct OpenAIWireTests {
     #expect(bodyString.contains("echo: hi"))
   }
 
-  @Test func responsesRequestSerialization() async throws {
+  @Test func `responses request serialization`() async throws {
     await MockRequestScript.shared.reset(host: openAIResponsesHost)
     await MockRequestScript.shared.enqueue(
       MockResponse(json: responsesFinalAnswerBody), host: openAIResponsesHost)
@@ -303,7 +303,7 @@ struct OpenAIWireTests {
     #expect(parameters["type"] as? String == "object")
   }
 
-  @Test func responsesMaxToolCallRoundsOneThrowsOnSecondToolCall() async throws {
+  @Test func `responses max tool call rounds one throws on second tool call`() async throws {
     await MockRequestScript.shared.reset(host: openAIResponsesHost)
     await MockRequestScript.shared.enqueue(
       [
@@ -341,7 +341,7 @@ struct OpenAIWireTests {
 
   /// Chat Completions: `usage` and `finishReason` must round-trip from the
   /// response body onto the returned ``LanguageModelSession/Response``.
-  @Test func chatCompletionsPopulatesUsageAndFinishReason() async throws {
+  @Test func `chat completions populates usage and finish reason`() async throws {
     await MockRequestScript.shared.reset(host: openAIChatHost)
     await MockRequestScript.shared.enqueue(
       MockResponse(json: Self.chatUsageBody), host: openAIChatHost)
@@ -359,7 +359,7 @@ struct OpenAIWireTests {
 
   /// 429 on Chat Completions must be surfaced as a typed
   /// `.rateLimited` with `RateLimitInfo` parsed from the response headers.
-  @Test func chatCompletionsRateLimited429AttachesRateLimitInfo() async throws {
+  @Test func `chat completions rate limited 429 attaches rate limit info`() async throws {
     await MockRequestScript.shared.reset(host: openAIChatHost)
     await MockRequestScript.shared.enqueue(
       MockResponse(

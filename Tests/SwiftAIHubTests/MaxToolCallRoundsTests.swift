@@ -70,7 +70,7 @@ actor RoundCounter {
   func increment() { value += 1 }
 }
 
-@Test func sessionRespectsMaxToolCallRoundsOfTwo() async throws {
+@Test func `session respects max tool call rounds of two`() async throws {
   let model = AlwaysToolCallingModel()
   let session = LanguageModelSession(
     model: model,
@@ -86,7 +86,7 @@ actor RoundCounter {
   #expect(final == 2)
 }
 
-@Test func sessionRespectsMaxToolCallRoundsOfFive() async throws {
+@Test func `session respects max tool call rounds of five`() async throws {
   let model = AlwaysToolCallingModel()
   let session = LanguageModelSession(
     model: model,
@@ -102,7 +102,7 @@ actor RoundCounter {
   #expect(final == 5)
 }
 
-@Test func sessionRespectsMaxToolCallRoundsOfZero() async throws {
+@Test func `session respects max tool call rounds of zero`() async throws {
   let model = AlwaysToolCallingModel()
   let session = LanguageModelSession(
     model: model,
@@ -118,7 +118,7 @@ actor RoundCounter {
   #expect(final == 0)
 }
 
-@Test func sessionRespectsMaxToolCallRoundsOfOne() async throws {
+@Test func `session respects max tool call rounds of one`() async throws {
   let model = AlwaysToolCallingModel()
   let session = LanguageModelSession(
     model: model,

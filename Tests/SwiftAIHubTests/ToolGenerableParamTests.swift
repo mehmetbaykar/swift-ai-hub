@@ -23,11 +23,11 @@ struct PaintTool {
   func execute(_ arguments: Arguments) async throws -> String { arguments.color.rawValue }
 }
 
-@Test func paintToolSchemaExposesGenerationSchema() {
+@Test func `paint tool schema exposes generation schema`() {
   _ = PaintTool.schema.generationSchema
 }
 
-@Test func paintToolDispatchRoundTrips() async throws {
+@Test func `paint tool dispatch round trips`() async throws {
   let tool = PaintTool()
   let args = try PaintTool.Arguments(
     GeneratedContent(
@@ -59,7 +59,7 @@ struct MeasureBoxTool {
   func execute(_ arguments: Arguments) async throws -> Int { arguments.box.side }
 }
 
-@Test func measureBoxDispatchDecodesNestedGenerable() async throws {
+@Test func `measure box dispatch decodes nested generable`() async throws {
   let tool = MeasureBoxTool()
   let args = try MeasureBoxTool.Arguments(
     GeneratedContent(

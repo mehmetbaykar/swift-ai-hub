@@ -42,7 +42,7 @@
   struct MacroSnapshotTests {
 
     // 1. @Generable struct — primitive properties.
-    @Test func generableStructPrimitives() {
+    @Test func `generable struct primitives`() {
       assertMacro {
         """
         @Generable
@@ -211,7 +211,7 @@
 
     // 2. @Generable struct with a nested @Generable-typed field. Exercises
     // the schema builder's handling of user-defined Generable references.
-    @Test func generableStructWithNestedGenerable() {
+    @Test func `generable struct with nested generable`() {
       assertMacro {
         """
         @Generable
@@ -510,7 +510,7 @@
 
     // 3. @Generable enum with associated values — regression fixture for
     // commit af92a6b (correct init/generatedContent/schema synthesis).
-    @Test func generableEnumAssociatedValues() {
+    @Test func `generable enum associated values`() {
       assertMacro {
         """
         @Generable
@@ -781,7 +781,7 @@
     }
 
     // 4. @Guide(Regex) — pattern literal must flow into schema (91e2948).
-    @Test func generableGuideRegexPattern() {
+    @Test func `generable guide regex pattern`() {
       assertMacro {
         """
         @Generable
@@ -951,7 +951,7 @@
     }
 
     // 5. @Tool simple — top-level tool with execute + nested Arguments.
-    @Test func toolSimple() {
+    @Test func `tool simple`() {
       assertMacro {
         """
         @Tool("Returns the current date/time.")
@@ -1132,7 +1132,7 @@
     }
 
     // 6. @Tool + @Parameter — Arguments uses the @Parameter marker.
-    @Test func toolWithParameter() {
+    @Test func `tool with parameter`() {
       assertMacro {
         """
         @Tool("Echoes the given message a number of times.")

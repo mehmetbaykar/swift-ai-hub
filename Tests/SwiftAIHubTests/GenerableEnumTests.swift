@@ -17,7 +17,7 @@ enum SearchFilter {
 
 // MARK: - generatedContent: payload uses typed kind, not string cast
 
-@Test func generableEnumSingleStringAssocSerializesAsString() {
+@Test func `generable enum single string assoc serializes as string`() {
   let content = SearchFilter.keyword("swift").generatedContent
   guard case .structure(let props, let keys) = content.kind else {
     Issue.record("Expected structure, got \(content.kind)")
@@ -28,7 +28,7 @@ enum SearchFilter {
   #expect(props["value"]?.kind == .string("swift"))
 }
 
-@Test func generableEnumSingleIntAssocSerializesAsNumberNotString() {
+@Test func `generable enum single int assoc serializes as number not string`() {
   let content = SearchFilter.bounded(42).generatedContent
   guard case .structure(let props, _) = content.kind else {
     Issue.record("Expected structure, got \(content.kind)")
@@ -39,7 +39,7 @@ enum SearchFilter {
   #expect(props["value"]?.kind == .number(42))
 }
 
-@Test func generableEnumMultiArgAssocSerializesEachFieldTyped() {
+@Test func `generable enum multi arg assoc serializes each field typed`() {
   let content = SearchFilter.dateRange(start: 1.0, end: 2.5).generatedContent
   guard case .structure(let props, _) = content.kind else {
     Issue.record("Expected structure, got \(content.kind)")
@@ -56,7 +56,7 @@ enum SearchFilter {
 
 // MARK: - init(_:): round-trip the tagged union shape
 
-@Test func generableEnumInitRoundTripsSingleAssoc() throws {
+@Test func `generable enum init round trips single assoc`() throws {
   let content = GeneratedContent(
     kind: .structure(
       properties: [
@@ -74,7 +74,7 @@ enum SearchFilter {
   #expect(s == "swift")
 }
 
-@Test func generableEnumInitRoundTripsIntAssoc() throws {
+@Test func `generable enum init round trips int assoc`() throws {
   let content = GeneratedContent(
     kind: .structure(
       properties: [
@@ -92,7 +92,7 @@ enum SearchFilter {
   #expect(n == 7)
 }
 
-@Test func generableEnumInitRoundTripsMultiArgAssoc() throws {
+@Test func `generable enum init round trips multi arg assoc`() throws {
   let payload = GeneratedContent(
     kind: .structure(
       properties: [
@@ -122,7 +122,7 @@ enum SearchFilter {
 
 // MARK: - generationSchema: tagged-union shape
 
-@Test func generableEnumGenerationSchemaIsTaggedUnion() throws {
+@Test func `generable enum generation schema is tagged union`() throws {
   let schema = SearchFilter.generationSchema
 
   // F1 (HIGH #1): the schema is an anyOf of per-case branches, each branch
@@ -203,7 +203,7 @@ enum T2Enum {
 }
 
 // (a) case pair(Int, Int) — schema-shaped content with param0/param1 round-trips lossless.
-@Test func t2UnlabeledMultiRoundTripsWithParamKeys() throws {
+@Test func `t 2 unlabeled multi round trips with param keys`() throws {
   let payload = GeneratedContent(
     kind: .structure(
       properties: [
@@ -243,7 +243,7 @@ enum T2Enum {
 }
 
 // Schema's synthesised payload object must declare exactly the decoder keys.
-@Test func t2UnlabeledMultiSchemaPropertyNamesMatchDecoder() throws {
+@Test func `t 2 unlabeled multi schema property names match decoder`() throws {
   let schema = T2Enum.generationSchema
   let data = try JSONEncoder().encode(schema)
   let json = try JSONSerialization.jsonObject(with: data) as? [String: Any]
@@ -265,7 +265,7 @@ enum T2Enum {
 }
 
 // (b) case pair(Int, Int) — missing param1 → throws keyNotFound.
-@Test func t2UnlabeledMultiMissingRequiredThrowsKeyNotFound() throws {
+@Test func `t 2 unlabeled multi missing required throws key not found`() throws {
   let payload = GeneratedContent(
     kind: .structure(
       properties: [
@@ -295,7 +295,7 @@ enum T2Enum {
 }
 
 // (c) case pair(Int, Int) — .null for param0 → throws valueNotFound.
-@Test func t2UnlabeledMultiNullRequiredThrowsValueNotFound() throws {
+@Test func `t 2 unlabeled multi null required throws value not found`() throws {
   let payload = GeneratedContent(
     kind: .structure(
       properties: [
@@ -325,7 +325,7 @@ enum T2Enum {
 }
 
 // (d) case labeled(x: Int, y: String) — content with keys x,y → round-trip.
-@Test func t2LabeledMultiRoundTripsWithSourceLabels() throws {
+@Test func `t 2 labeled multi round trips with source labels`() throws {
   let payload = GeneratedContent(
     kind: .structure(
       properties: [
@@ -364,7 +364,7 @@ enum T2Enum {
   #expect(rvalProps["y"]?.kind == .string("ok"))
 }
 
-@Test func t2LabeledMultiMissingRequiredThrowsKeyNotFound() throws {
+@Test func `t 2 labeled multi missing required throws key not found`() throws {
   let payload = GeneratedContent(
     kind: .structure(
       properties: [
@@ -394,7 +394,7 @@ enum T2Enum {
 }
 
 // (e) case single(Int) — missing value → throws.
-@Test func t2SingleUnlabeledMissingValueThrowsValueNotFound() throws {
+@Test func `t 2 single unlabeled missing value throws value not found`() throws {
   // `value` key entirely absent on the outer structure.
   let content = GeneratedContent(
     kind: .structure(
@@ -419,7 +419,7 @@ enum T2Enum {
   }
 }
 
-@Test func t2SingleUnlabeledNullRequiredThrowsValueNotFound() throws {
+@Test func `t 2 single unlabeled null required throws value not found`() throws {
   let content = GeneratedContent(
     kind: .structure(
       properties: [
@@ -444,7 +444,7 @@ enum T2Enum {
 // `opt(Int?)` is single-unlabeled, so the outer `value` key IS the payload
 // (not a nested structure): absent → .opt(nil), .null → .opt(nil),
 // present number → .opt(some).
-@Test func t2OptionalAssocAbsentDecodesAsNil() throws {
+@Test func `t 2 optional assoc absent decodes as nil`() throws {
   let content = GeneratedContent(
     kind: .structure(
       properties: [
@@ -462,7 +462,7 @@ enum T2Enum {
   #expect(n == nil)
 }
 
-@Test func t2OptionalAssocNullDecodesAsNil() throws {
+@Test func `t 2 optional assoc null decodes as nil`() throws {
   let content = GeneratedContent(
     kind: .structure(
       properties: [
@@ -498,7 +498,7 @@ enum T2OptMulti {
   case noneCase
 }
 
-@Test func t2UnlabeledMultiOptionalPrimitiveSerialises() throws {
+@Test func `t 2 unlabeled multi optional primitive serialises`() throws {
   let content = T2OptMulti.pair(nil, 5).generatedContent
   guard case .structure(let props, _) = content.kind,
     case .structure(let vprops, _) = props["value"]?.kind
@@ -531,7 +531,7 @@ enum T2OptMulti {
 
 // MED #2: outer `value` absence for multi/labeled-single must throw
 // keyNotFound("value"), not valueNotFound — matches per-field contract.
-@Test func t2MultiMissingOuterValueThrowsKeyNotFound() throws {
+@Test func `t 2 multi missing outer value throws key not found`() throws {
   let content = GeneratedContent(
     kind: .structure(
       properties: [
@@ -553,7 +553,7 @@ enum T2OptMulti {
 
 // MED #3: zero-assoc case in a mixed enum must serialise with an empty
 // structure payload (matching the schema), not a bare string sentinel.
-@Test func t2ZeroAssocCaseSerialisesAsEmptyStructure() throws {
+@Test func `t 2 zero assoc case serialises as empty structure`() throws {
   let content = T2OptMulti.noneCase.generatedContent
   guard case .structure(let props, _) = content.kind else {
     Issue.record("Expected structured outer content")
@@ -577,7 +577,7 @@ enum T2OptMulti {
   }
 }
 
-@Test func t2OptionalAssocPresentDecodes() throws {
+@Test func `t 2 optional assoc present decodes`() throws {
   // `case opt(Int?)` is a single-unlabeled case (one param, no label) — the
   // single-value path wraps the payload directly as the `value` key, not
   // nested under a `param0` field. So the outer `value` IS the Int.

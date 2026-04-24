@@ -118,7 +118,7 @@ private func call(_ name: String) -> Transcript.ToolCall {
 
 // MARK: - RetryPolicy
 
-@Test func retryPolicyRetriesUpToMaxAttempts() async throws {
+@Test func `retry policy retries up to max attempts`() async throws {
   let counter = AttemptCounter()
   let tool = FlakyTool(failuresBeforeSuccess: 2, counter: counter)
   let session = makeSession(
@@ -137,7 +137,7 @@ private func call(_ name: String) -> Transcript.ToolCall {
   #expect(await counter.count == 3)
 }
 
-@Test func retryPolicyExhaustsAndThrows() async throws {
+@Test func `retry policy exhausts and throws`() async throws {
   let counter = AttemptCounter()
   let tool = AlwaysFailTool(counter: counter)
   let session = makeSession(
@@ -155,7 +155,7 @@ private func call(_ name: String) -> Transcript.ToolCall {
   #expect(await counter.count == 3)
 }
 
-@Test func disabledRetryRunsOnce() async throws {
+@Test func `disabled retry runs once`() async throws {
   let counter = AttemptCounter()
   let tool = AlwaysFailTool(counter: counter)
   let session = makeSession(tools: [tool], retry: .disabled)
@@ -172,7 +172,7 @@ private func call(_ name: String) -> Transcript.ToolCall {
 
 // MARK: - MissingToolPolicy
 
-@Test func missingToolPolicyThrowErrorThrows() async throws {
+@Test func `missing tool policy throw error throws`() async throws {
   let session = makeSession(tools: [], missing: .throwError)
   await #expect(throws: LanguageModelSession.MissingToolError.self) {
     _ = try await session.executeToolDecisionsInParallel(
@@ -183,7 +183,7 @@ private func call(_ name: String) -> Transcript.ToolCall {
   }
 }
 
-@Test func missingToolPolicyEmitToolOutputContinues() async throws {
+@Test func `missing tool policy emit tool output continues`() async throws {
   let fallback = "unknown tool, ignoring"
   let session = makeSession(tools: [], missing: .emitToolOutput(fallback))
 
@@ -205,7 +205,7 @@ private func call(_ name: String) -> Transcript.ToolCall {
 
 // MARK: - Parallel dispatch
 
-@Test func toolCallsDispatchConcurrently() async throws {
+@Test func `tool calls dispatch concurrently`() async throws {
   let counter = AttemptCounter()
   let t1 = SlowTool(name: "s1", delay: 0.3, counter: counter)
   let t2 = SlowTool(name: "s2", delay: 0.3, counter: counter)

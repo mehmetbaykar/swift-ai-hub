@@ -58,7 +58,7 @@ private let anthropicToolUseBody = """
 
 @Suite(.serialized)
 struct AnthropicWireTests {
-  @Test func singleShotFinalAnswer() async throws {
+  @Test func `single shot final answer`() async throws {
     await MockRequestScript.shared.reset(host: anthropicHost)
     await MockRequestScript.shared.enqueue(
       MockResponse(json: anthropicFinalAnswerBody), host: anthropicHost)
@@ -71,7 +71,7 @@ struct AnthropicWireTests {
     #expect(consumed == 1)
   }
 
-  @Test func toolUseThenFinalAnswer() async throws {
+  @Test func `tool use then final answer`() async throws {
     await MockRequestScript.shared.reset(host: anthropicHost)
     await MockRequestScript.shared.enqueue(
       [
@@ -100,7 +100,7 @@ struct AnthropicWireTests {
     #expect(bodyString.contains("echo: hi"))
   }
 
-  @Test func maxToolCallRoundsOneThrowsOnSecondToolUse() async throws {
+  @Test func `max tool call rounds one throws on second tool use`() async throws {
     await MockRequestScript.shared.reset(host: anthropicHost)
     await MockRequestScript.shared.enqueue(
       [
@@ -127,7 +127,7 @@ struct AnthropicWireTests {
   /// path, required auth / version headers, model id, message role+text,
   /// and tool descriptor shape. Parses back into JSON so encoder key
   /// ordering is not locked in.
-  @Test func requestSerialization() async throws {
+  @Test func `request serialization`() async throws {
     await MockRequestScript.shared.reset(host: anthropicHost)
     await MockRequestScript.shared.enqueue(
       MockResponse(json: anthropicFinalAnswerBody), host: anthropicHost)
@@ -178,7 +178,7 @@ struct AnthropicWireTests {
   /// accumulated snapshot text matches the concatenated deltas. This
   /// covers the SSE framing + `text_delta` decoder that the real API
   /// relies on.
-  @Test func sseStreamingAccumulatesTextDeltas() async throws {
+  @Test func `sse streaming accumulates text deltas`() async throws {
     await MockRequestScript.shared.reset(host: anthropicHost)
 
     let sseBody = """
@@ -229,7 +229,7 @@ struct AnthropicWireTests {
   /// `cache_control: {"type": "ephemeral"}` on the last system block,
   /// last tool descriptor, and last user message — per Anthropic's
   /// prompt-caching docs. Verifies W2 I1.
-  @Test func promptCachingEmitsCacheControlOnEligibleBlocks() async throws {
+  @Test func `prompt caching emits cache control on eligible blocks`() async throws {
     await MockRequestScript.shared.reset(host: anthropicHost)
     await MockRequestScript.shared.enqueue(
       MockResponse(json: anthropicFinalAnswerBody), host: anthropicHost)
@@ -270,7 +270,7 @@ struct AnthropicWireTests {
   /// When `instructions` is set, the Anthropic provider must emit them via
   /// the top-level `system` field and must *not* fold them into a user
   /// message. Verifies W2 I9a.
-  @Test func systemPromptPassthroughEmitsTopLevelSystemField() async throws {
+  @Test func `system prompt passthrough emits top level system field`() async throws {
     await MockRequestScript.shared.reset(host: anthropicHost)
     await MockRequestScript.shared.enqueue(
       MockResponse(json: anthropicFinalAnswerBody), host: anthropicHost)
@@ -303,7 +303,7 @@ struct AnthropicWireTests {
 
   /// Verifies W1: Anthropic's `usage` block is projected onto
   /// ``Response.usage`` and `stop_reason` onto ``Response.finishReason``.
-  @Test func usageAndFinishReasonPopulated() async throws {
+  @Test func `usage and finish reason populated`() async throws {
     let body = """
       {
         "id": "msg_u",
@@ -335,7 +335,7 @@ struct AnthropicWireTests {
 
   /// Verifies W1 FinishReason mapping for the four required stop_reasons
   /// plus content-filter (refusal). Drives one request per case.
-  @Test func finishReasonMappedFromStopReason() async throws {
+  @Test func `finish reason mapped from stop reason`() async throws {
     let cases: [(stopReason: String, expected: FinishReason)] = [
       ("end_turn", .stop),
       ("max_tokens", .length),
@@ -363,7 +363,7 @@ struct AnthropicWireTests {
 
   /// Verifies W5: a 429 response attaches ``RateLimitInfo`` parsed from
   /// the response headers to the thrown ``GenerationError.rateLimited``.
-  @Test func rateLimited429AttachesRateLimitInfo() async throws {
+  @Test func `rate limited 429 attaches rate limit info`() async throws {
     await MockRequestScript.shared.reset(host: anthropicHost)
     await MockRequestScript.shared.enqueue(
       MockResponse(
@@ -397,7 +397,7 @@ struct AnthropicWireTests {
   /// `content_block_start` + `input_json_delta` deltas, dispatches the
   /// tool on `message_stop`, and continues with a second request that
   /// carries the tool_result back to Claude.
-  @Test func sseStreamingToolLoopRoundTrip() async throws {
+  @Test func `sse streaming tool loop round trip`() async throws {
     await MockRequestScript.shared.reset(host: anthropicHost)
 
     let firstSSE = """

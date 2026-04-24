@@ -57,7 +57,7 @@ private let geminiFunctionCallBody = """
 
 @Suite(.serialized)
 struct GeminiWireTests {
-  @Test func singleShotFinalAnswer() async throws {
+  @Test func `single shot final answer`() async throws {
     await MockRequestScript.shared.reset(host: geminiHost)
     await MockRequestScript.shared.enqueue(
       MockResponse(json: geminiFinalAnswerBody), host: geminiHost)
@@ -70,7 +70,7 @@ struct GeminiWireTests {
     #expect(consumed == 1)
   }
 
-  @Test func functionCallThenFinalAnswer() async throws {
+  @Test func `function call then final answer`() async throws {
     await MockRequestScript.shared.reset(host: geminiHost)
     await MockRequestScript.shared.enqueue(
       [
@@ -93,7 +93,7 @@ struct GeminiWireTests {
   // the outbound JSON body for a generateContent call carries the expected
   // model path, user message, and tool descriptors in the `function_declarations`
   // shape specific to Gemini.
-  @Test func requestBodySerialization() async throws {
+  @Test func `request body serialization`() async throws {
     await MockRequestScript.shared.reset(host: geminiHost)
     await MockRequestScript.shared.enqueue(
       MockResponse(json: geminiFinalAnswerBody), host: geminiHost)
@@ -122,7 +122,7 @@ struct GeminiWireTests {
     #expect(decls.contains { ($0["name"] as? String) == "geminiEcho" })
   }
 
-  @Test func maxToolCallRoundsOneThrowsOnSecondFunctionCall() async throws {
+  @Test func `max tool call rounds one throws on second function call`() async throws {
     await MockRequestScript.shared.reset(host: geminiHost)
     await MockRequestScript.shared.enqueue(
       [
@@ -146,7 +146,7 @@ struct GeminiWireTests {
 
   // I9b: instructions must be emitted as top-level `systemInstruction` rather
   // than folded into the first user content turn.
-  @Test func systemInstructionEmittedAsTopLevelField() async throws {
+  @Test func `system instruction emitted as top level field`() async throws {
     await MockRequestScript.shared.reset(host: geminiHost)
     await MockRequestScript.shared.enqueue(
       MockResponse(json: geminiFinalAnswerBody), host: geminiHost)
@@ -179,7 +179,7 @@ struct GeminiWireTests {
 
   // I9b backward compat: with no instructions, no systemInstruction field
   // should be emitted.
-  @Test func systemInstructionOmittedWhenInstructionsNil() async throws {
+  @Test func `system instruction omitted when instructions nil`() async throws {
     await MockRequestScript.shared.reset(host: geminiHost)
     await MockRequestScript.shared.enqueue(
       MockResponse(json: geminiFinalAnswerBody), host: geminiHost)
@@ -198,7 +198,7 @@ struct GeminiWireTests {
 
   // W1: Response.usage should be populated from `usageMetadata` and
   // finishReason should map STOP → .stop.
-  @Test func usageAndFinishReasonPopulated() async throws {
+  @Test func `usage and finish reason populated`() async throws {
     await MockRequestScript.shared.reset(host: geminiHost)
     let bodyWithUsage = """
       {
@@ -229,7 +229,7 @@ struct GeminiWireTests {
   }
 
   // W1: finishReason mapping for MAX_TOKENS, SAFETY, MALFORMED_FUNCTION_CALL.
-  @Test func finishReasonMapping() async throws {
+  @Test func `finish reason mapping`() async throws {
     let cases: [(raw: String, expected: FinishReason)] = [
       ("MAX_TOKENS", .length),
       ("SAFETY", .contentFilter),
@@ -259,7 +259,7 @@ struct GeminiWireTests {
 
   // W5: a 429 response should throw `.rateLimited` with `RateLimitInfo`
   // parsed from the response headers.
-  @Test func rateLimit429AttachesRateLimitInfo() async throws {
+  @Test func `rate limit 429 attaches rate limit info`() async throws {
     await MockRequestScript.shared.reset(host: geminiHost)
     await MockRequestScript.shared.enqueue(
       MockResponse(
@@ -293,7 +293,7 @@ struct GeminiWireTests {
 
   // I8b: a streamed functionCall part should trigger the tool-call loop and a
   // fresh stream with the functionResponse posted back.
-  @Test func streamToolLoopRoundTrip() async throws {
+  @Test func `stream tool loop round trip`() async throws {
     await MockRequestScript.shared.reset(host: geminiHost)
     // SSE events must carry a single-line JSON payload — EventSource parses each
     // `\n`-separated line as its own field, so multi-line JSON breaks the event.

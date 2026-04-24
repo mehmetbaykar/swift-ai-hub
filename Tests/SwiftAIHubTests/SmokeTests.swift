@@ -6,6 +6,6 @@ import Testing
 
 @testable import SwiftAIHub
 
-@Test func packageLinks() {
+@Test func `package links`() {
   #expect(true)
 }

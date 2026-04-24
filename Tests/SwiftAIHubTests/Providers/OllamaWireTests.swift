@@ -54,7 +54,7 @@ private let ollamaToolCallBody = """
 
 @Suite(.serialized)
 struct OllamaWireTests {
-  @Test func singleShotFinalAnswer() async throws {
+  @Test func `single shot final answer`() async throws {
     await MockRequestScript.shared.reset(host: ollamaHost)
     await MockRequestScript.shared.enqueue(
       MockResponse(json: ollamaFinalAnswerBody), host: ollamaHost)
@@ -67,7 +67,7 @@ struct OllamaWireTests {
     #expect(consumed == 1)
   }
 
-  @Test func toolCallThenFinalAnswer() async throws {
+  @Test func `tool call then final answer`() async throws {
     await MockRequestScript.shared.reset(host: ollamaHost)
     await MockRequestScript.shared.enqueue(
       [
@@ -87,7 +87,7 @@ struct OllamaWireTests {
   }
 
   // M14: docs/04 §Testing — exact request-body shape for /api/chat.
-  @Test func requestBodySerialization() async throws {
+  @Test func `request body serialization`() async throws {
     await MockRequestScript.shared.reset(host: ollamaHost)
     await MockRequestScript.shared.enqueue(
       MockResponse(json: ollamaFinalAnswerBody), host: ollamaHost)
@@ -116,7 +116,7 @@ struct OllamaWireTests {
     #expect(fn["name"] as? String == "ollamaEcho")
   }
 
-  @Test func maxToolCallRoundsOneThrowsOnSecondToolCall() async throws {
+  @Test func `max tool call rounds one throws on second tool call`() async throws {
     await MockRequestScript.shared.reset(host: ollamaHost)
     await MockRequestScript.shared.enqueue(
       [
@@ -152,7 +152,7 @@ struct OllamaWireTests {
     }
     """
 
-  @Test func populatesUsageAndFinishReason() async throws {
+  @Test func `populates usage and finish reason`() async throws {
     await MockRequestScript.shared.reset(host: ollamaHost)
     await MockRequestScript.shared.enqueue(
       MockResponse(json: Self.ollamaUsageBody), host: ollamaHost)

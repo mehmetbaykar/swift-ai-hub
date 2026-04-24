@@ -77,7 +77,7 @@ private func structure(
 
 // MARK: - Required primitives must throw on absence
 
-@Test func requiredStringMissingThrows() {
+@Test func `required string missing throws`() {
   let content = structure([
     ("count", GeneratedContent(kind: .number(1))),
     ("ratio", GeneratedContent(kind: .number(1.0))),
@@ -88,7 +88,7 @@ private func structure(
   }
 }
 
-@Test func requiredIntMissingThrows() {
+@Test func `required int missing throws`() {
   let content = structure([
     ("title", GeneratedContent(kind: .string("x"))),
     ("ratio", GeneratedContent(kind: .number(1.0))),
@@ -99,7 +99,7 @@ private func structure(
   }
 }
 
-@Test func requiredDoubleMissingThrows() {
+@Test func `required double missing throws`() {
   let content = structure([
     ("title", GeneratedContent(kind: .string("x"))),
     ("count", GeneratedContent(kind: .number(1))),
@@ -110,7 +110,7 @@ private func structure(
   }
 }
 
-@Test func requiredBoolMissingThrows() {
+@Test func `required bool missing throws`() {
   let content = structure([
     ("title", GeneratedContent(kind: .string("x"))),
     ("count", GeneratedContent(kind: .number(1))),
@@ -123,7 +123,7 @@ private func structure(
 
 // MARK: - Required primitives must throw DecodingError.valueNotFound on .null
 
-@Test func requiredStringNullThrowsValueNotFound() {
+@Test func `required string null throws value not found`() {
   let content = structure([
     ("title", GeneratedContent(kind: .null)),
     ("count", GeneratedContent(kind: .number(1))),
@@ -138,7 +138,7 @@ private func structure(
   }
 }
 
-@Test func requiredIntNullThrowsValueNotFound() {
+@Test func `required int null throws value not found`() {
   let content = structure([
     ("title", GeneratedContent(kind: .string("x"))),
     ("count", GeneratedContent(kind: .null)),
@@ -153,7 +153,7 @@ private func structure(
   }
 }
 
-@Test func requiredDoubleNullThrowsValueNotFound() {
+@Test func `required double null throws value not found`() {
   let content = structure([
     ("title", GeneratedContent(kind: .string("x"))),
     ("count", GeneratedContent(kind: .number(1))),
@@ -168,7 +168,7 @@ private func structure(
   }
 }
 
-@Test func requiredBoolNullThrowsValueNotFound() {
+@Test func `required bool null throws value not found`() {
   let content = structure([
     ("title", GeneratedContent(kind: .string("x"))),
     ("count", GeneratedContent(kind: .number(1))),
@@ -185,7 +185,7 @@ private func structure(
 
 // MARK: - Required primitive missing keys throw DecodingError.keyNotFound
 
-@Test func requiredStringMissingThrowsKeyNotFound() {
+@Test func `required string missing throws key not found`() {
   let content = structure([
     ("count", GeneratedContent(kind: .number(1))),
     ("ratio", GeneratedContent(kind: .number(1.0))),
@@ -199,7 +199,7 @@ private func structure(
   }
 }
 
-@Test func requiredNestedMissingThrowsKeyNotFound() {
+@Test func `required nested missing throws key not found`() {
   let content = structure([])
   #expect {
     _ = try RequiredNestedFixture(content)
@@ -209,7 +209,7 @@ private func structure(
   }
 }
 
-@Test func requiredNestedNullThrowsValueNotFound() {
+@Test func `required nested null throws value not found`() {
   let content = structure([
     ("inner", GeneratedContent(kind: .null))
   ])
@@ -223,7 +223,7 @@ private func structure(
 
 // MARK: - Required containers must throw on absence
 
-@Test func requiredArrayMissingThrows() {
+@Test func `required array missing throws`() {
   let content = structure([])
   #expect(throws: (any Error).self) {
     _ = try RequiredContainersFixture(content)
@@ -232,7 +232,7 @@ private func structure(
 
 // MARK: - Required nested @Generable struct must throw on absence
 
-@Test func requiredNestedGenerableMissingThrows() {
+@Test func `required nested generable missing throws`() {
   let content = structure([])
   #expect(throws: (any Error).self) {
     _ = try RequiredNestedFixture(content)
@@ -241,7 +241,7 @@ private func structure(
 
 // MARK: - Optional properties still accept absence/null as nil
 
-@Test func optionalPrimitivesMissingDecodeAsNil() throws {
+@Test func `optional primitives missing decode as nil`() throws {
   let content = structure([])
   let decoded = try OptionalPrimitivesFixture(content)
   #expect(decoded.title == nil)
@@ -249,7 +249,7 @@ private func structure(
   #expect(decoded.flag == nil)
 }
 
-@Test func optionalPrimitivesNullDecodeAsNil() throws {
+@Test func `optional primitives null decode as nil`() throws {
   let content = structure([
     ("title", GeneratedContent(kind: .null)),
     ("count", GeneratedContent(kind: .null)),
@@ -261,13 +261,13 @@ private func structure(
   #expect(decoded.flag == nil)
 }
 
-@Test func optionalNestedGenerableMissingDecodesAsNil() throws {
+@Test func `optional nested generable missing decodes as nil`() throws {
   let content = structure([])
   let decoded = try OptionalNestedFixture(content)
   #expect(decoded.inner == nil)
 }
 
-@Test func optionalNestedGenerableNullDecodesAsNil() throws {
+@Test func `optional nested generable null decodes as nil`() throws {
   let content = structure([
     ("inner", GeneratedContent(kind: .null))
   ])
@@ -277,7 +277,7 @@ private func structure(
 
 // MARK: - Happy-path: all required present decodes cleanly
 
-@Test func requiredPrimitivesPresentDecodes() throws {
+@Test func `required primitives present decodes`() throws {
   let content = structure([
     ("title", GeneratedContent(kind: .string("hi"))),
     ("count", GeneratedContent(kind: .number(3))),
@@ -291,7 +291,7 @@ private func structure(
   #expect(decoded.flag == true)
 }
 
-@Test func requiredNestedPresentDecodes() throws {
+@Test func `required nested present decodes`() throws {
   let content = structure([
     (
       "inner",
@@ -306,14 +306,14 @@ private func structure(
 
 // MARK: - M10: Optional<Primitive> with `= nil` default
 
-@Test func optionalPrimitiveWithNilDefaultDecodesFromAbsence() throws {
+@Test func `optional primitive with nil default decodes from absence`() throws {
   let content = structure([])
   let decoded = try OptionalPrimitiveWithDefaultFixture(content)
   #expect(decoded.timezone == nil)
   #expect(decoded.limit == nil)
 }
 
-@Test func optionalPrimitiveWithNilDefaultDecodesFromValue() throws {
+@Test func `optional primitive with nil default decodes from value`() throws {
   let content = structure([
     ("timezone", GeneratedContent(kind: .string("Europe/Berlin"))),
     ("limit", GeneratedContent(kind: .number(10))),

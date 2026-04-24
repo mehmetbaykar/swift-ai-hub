@@ -27,13 +27,13 @@ struct WeatherTool: Tool {
   }
 }
 
-@Test func toolSatisfiesProtocolAndExposesName() {
+@Test func `tool satisfies protocol and exposes name`() {
   let tool = WeatherTool()
   #expect(tool.name == "weather")
   #expect(tool.description == "Return the current weather for a given timezone.")
 }
 
-@Test func toolCanBeExecutedDirectly() async throws {
+@Test func `tool can be executed directly`() async throws {
   let tool = WeatherTool()
   let out = try await tool.call(arguments: WeatherArgs(timezone: "Europe/Berlin"))
   #expect(out == "sunny in Europe/Berlin")

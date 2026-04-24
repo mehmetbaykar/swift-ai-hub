@@ -54,7 +54,7 @@ private let openResponsesToolCallBody = """
 
 @Suite(.serialized)
 struct OpenResponsesWireTests {
-  @Test func singleShotFinalAnswer() async throws {
+  @Test func `single shot final answer`() async throws {
     await MockRequestScript.shared.reset(host: openResponsesHost)
     await MockRequestScript.shared.enqueue(
       MockResponse(json: openResponsesFinalAnswerBody), host: openResponsesHost)
@@ -67,7 +67,7 @@ struct OpenResponsesWireTests {
     #expect(consumed == 1)
   }
 
-  @Test func toolCallThenFinalAnswer() async throws {
+  @Test func `tool call then final answer`() async throws {
     await MockRequestScript.shared.reset(host: openResponsesHost)
     await MockRequestScript.shared.enqueue(
       [
@@ -87,7 +87,7 @@ struct OpenResponsesWireTests {
   }
 
   // M14: docs/04 §Testing — exact request-body shape for /v1/responses.
-  @Test func requestBodySerialization() async throws {
+  @Test func `request body serialization`() async throws {
     await MockRequestScript.shared.reset(host: openResponsesHost)
     await MockRequestScript.shared.enqueue(
       MockResponse(json: openResponsesFinalAnswerBody), host: openResponsesHost)
@@ -115,7 +115,7 @@ struct OpenResponsesWireTests {
     #expect(echoTool["parameters"] is [String: Any])
   }
 
-  @Test func maxToolCallRoundsOneThrowsOnSecondToolCall() async throws {
+  @Test func `max tool call rounds one throws on second tool call`() async throws {
     await MockRequestScript.shared.reset(host: openResponsesHost)
     await MockRequestScript.shared.enqueue(
       [
@@ -152,7 +152,7 @@ struct OpenResponsesWireTests {
     }
     """
 
-  @Test func populatesUsageAndFinishReason() async throws {
+  @Test func `populates usage and finish reason`() async throws {
     await MockRequestScript.shared.reset(host: openResponsesHost)
     await MockRequestScript.shared.enqueue(
       MockResponse(json: Self.usageBody), host: openResponsesHost)
@@ -168,7 +168,7 @@ struct OpenResponsesWireTests {
     #expect(usage.totalTokens == 14)
   }
 
-  @Test func rateLimited429AttachesRateLimitInfo() async throws {
+  @Test func `rate limited 429 attaches rate limit info`() async throws {
     await MockRequestScript.shared.reset(host: openResponsesHost)
     await MockRequestScript.shared.enqueue(
       MockResponse(

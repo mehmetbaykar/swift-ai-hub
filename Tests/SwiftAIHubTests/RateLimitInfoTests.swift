@@ -11,8 +11,8 @@ import Testing
 @Suite("RateLimitInfo header parsing")
 struct RateLimitInfoTests {
 
-  @Test("OpenAI-style headers populate limit/remaining/reset fields")
-  func openAIStyleHeaders() {
+  @Test
+  func `OpenAI-style headers populate limit/remaining/reset fields`() {
     let reference = Date(timeIntervalSince1970: 1_700_000_000)
     let headers: [String: String] = [
       "x-ratelimit-limit-requests": "5000",
@@ -37,8 +37,8 @@ struct RateLimitInfoTests {
     #expect(info?.resetTokens == reference.addingTimeInterval(0.5))
   }
 
-  @Test("Anthropic-style header variants map onto the same fields")
-  func anthropicStyleHeaders() {
+  @Test
+  func `Anthropic-style header variants map onto the same fields`() {
     let headers: [String: String] = [
       "anthropic-ratelimit-requests-limit": "50",
       "anthropic-ratelimit-requests-remaining": "49",
@@ -64,8 +64,8 @@ struct RateLimitInfoTests {
     #expect(info?.resetTokens == iso.date(from: "2024-01-01T00:00:30Z"))
   }
 
-  @Test("Header lookup is case-insensitive")
-  func caseInsensitive() {
+  @Test
+  func `Header lookup is case-insensitive`() {
     let info = RateLimitInfo.from(headers: [
       "X-RateLimit-Limit-Requests": "100",
       "Anthropic-Ratelimit-Tokens-Remaining": "7",
@@ -74,20 +74,20 @@ struct RateLimitInfoTests {
     #expect(info?.remainingTokens == 7)
   }
 
-  @Test("Missing headers yield nil")
-  func missingHeadersReturnsNil() {
+  @Test
+  func `Missing headers yield nil`() {
     #expect(RateLimitInfo.from(headers: [:]) == nil)
     #expect(RateLimitInfo.from(headers: ["content-type": "application/json"]) == nil)
   }
 
-  @Test("retry-after accepts integer seconds")
-  func retryAfterSeconds() {
+  @Test
+  func `retry-after accepts integer seconds`() {
     let info = RateLimitInfo.from(headers: ["retry-after": "30"])
     #expect(info?.retryAfter == 30)
   }
 
-  @Test("retry-after accepts HTTP-date form")
-  func retryAfterHTTPDate() {
+  @Test
+  func `retry-after accepts HTTP-date form`() {
     // Fri, 31 Dec 1999 23:59:59 GMT == 946684799 epoch seconds.
     let reference = Date(timeIntervalSince1970: 946_684_759)  // 40s earlier
     let info = RateLimitInfo.from(
@@ -97,8 +97,8 @@ struct RateLimitInfoTests {
     #expect(info?.retryAfter == 40)
   }
 
-  @Test("retry-after with HTTP-date in the past clamps to zero")
-  func retryAfterPastDate() {
+  @Test
+  func `retry-after with HTTP-date in the past clamps to zero`() {
     let reference = Date(timeIntervalSince1970: 2_000_000_000)
     let info = RateLimitInfo.from(
       headers: ["retry-after": "Fri, 31 Dec 1999 23:59:59 GMT"],
@@ -107,8 +107,8 @@ struct RateLimitInfoTests {
     #expect(info?.retryAfter == 0)
   }
 
-  @Test("OpenAI-style headers win over Anthropic-style when both present")
-  func openAIPrecedence() {
+  @Test
+  func `OpenAI-style headers win over Anthropic-style when both present`() {
     let info = RateLimitInfo.from(headers: [
       "x-ratelimit-limit-requests": "100",
       "anthropic-ratelimit-requests-limit": "999",
@@ -116,8 +116,8 @@ struct RateLimitInfoTests {
     #expect(info?.limitRequests == 100)
   }
 
-  @Test("Codable round-trip preserves all fields")
-  func codableRoundTrip() throws {
+  @Test
+  func `Codable round-trip preserves all fields`() throws {
     let original = RateLimitInfo(
       requestId: "r",
       organizationId: "o",
@@ -134,8 +134,8 @@ struct RateLimitInfoTests {
     #expect(decoded == original)
   }
 
-  @Test("GenerationError.Context carries optional RateLimitInfo")
-  func contextCompanion() {
+  @Test
+  func `GenerationError.Context carries optional RateLimitInfo`() {
     let info = RateLimitInfo(retryAfter: 12)
     let ctx = LanguageModelSession.GenerationError.Context(
       debugDescription: "429",
