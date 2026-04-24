@@ -31,7 +31,6 @@ jobs:
   all-traits:
     name: swift build (MLX, CoreML, Llama, FoundationModels)
     runs-on: macos-26
-    continue-on-error: true
     steps:
       - uses: actions/checkout@v4
       - run: swift build --traits MLX,CoreML,Llama,FoundationModels
