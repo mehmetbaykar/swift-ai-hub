@@ -36,6 +36,8 @@ let package = Package(
     .package(url: "https://github.com/mattt/llama.swift", .upToNextMajor(from: "2.7484.0")),
     .package(url: "https://github.com/mattt/PartialJSONDecoder", from: "1.0.0"),
     .package(url: "https://github.com/swift-server/async-http-client.git", from: "1.24.0"),
+    // Test-only: Point-Free swift-macro-testing for snapshot-based macro expansion tests.
+    .package(url: "https://github.com/pointfreeco/swift-macro-testing.git", from: "0.6.3"),
   ],
   targets: [
     .macro(
@@ -104,6 +106,7 @@ let package = Package(
         "SwiftAIHub",
         "SwiftAIHubMacros",
         .product(name: "SwiftSyntaxMacrosTestSupport", package: "swift-syntax"),
+        .product(name: "MacroTesting", package: "swift-macro-testing"),
       ]
     ),
   ],
