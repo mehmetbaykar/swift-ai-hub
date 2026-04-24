@@ -154,11 +154,15 @@ public struct OllamaLanguageModel: LanguageModel {
       }
 
       let text = chatResponse.message.content ?? ""
+      let usage = chatResponse.hubUsage
+      let finishReason = chatResponse.hubFinishReason
       if type == String.self {
         return LanguageModelSession.Response(
           content: text as! Content,
           rawContent: GeneratedContent(text),
-          transcriptEntries: ArraySlice(entries)
+          transcriptEntries: ArraySlice(entries),
+          usage: usage,
+          finishReason: finishReason
         )
       }
 
@@ -167,7 +171,9 @@ public struct OllamaLanguageModel: LanguageModel {
       return LanguageModelSession.Response(
         content: content,
         rawContent: generatedContent,
-        transcriptEntries: ArraySlice(entries)
+        transcriptEntries: ArraySlice(entries),
+        usage: usage,
+        finishReason: finishReason
       )
     }
   }
@@ -505,12 +511,41 @@ private struct ChatResponse: Decodable, Sendable {
   let createdAt: Date
   let message: ChatMessageResponse
   let done: Bool
+  let doneReason: String?
+  let promptEvalCount: Int?
+  let evalCount: Int?
 
   private enum CodingKeys: String, CodingKey {
     case model
     case createdAt = "created_at"
     case message
     case done
+    case doneReason = "done_reason"
+    case promptEvalCount = "prompt_eval_count"
+    case evalCount = "eval_count"
+  }
+
+  /// Maps Ollama's token accounting to the hub ``Usage`` type.
+  /// Returns `nil` if the response reports no counts at all.
+  var hubUsage: Usage? {
+    if promptEvalCount == nil && evalCount == nil { return nil }
+    let total: Int? = {
+      guard let p = promptEvalCount, let c = evalCount else { return nil }
+      return p + c
+    }()
+    return Usage(
+      promptTokens: promptEvalCount,
+      completionTokens: evalCount,
+      totalTokens: total
+    )
+  }
+
+  /// Maps Ollama's `done_reason` string onto the hub ``FinishReason``.
+  /// `"stop"` / `"length"` map directly; other values round-trip through
+  /// ``FinishReason/other(_:)``.
+  var hubFinishReason: FinishReason? {
+    guard let raw = doneReason else { return nil }
+    return FinishReason(rawValue: raw)
   }
 }
 

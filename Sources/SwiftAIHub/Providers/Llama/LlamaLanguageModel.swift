@@ -531,6 +531,8 @@ import Foundation
           options: runtimeOptions
         )
 
+        // Llama.cpp local generation does not surface a token-count envelope
+        // or a finish-reason field; both stay `nil` via the no-usage init.
         return LanguageModelSession.Response(
           content: text as! Content,
           rawContent: GeneratedContent(text),
@@ -547,6 +549,8 @@ import Foundation
         )
         let generatedContent = try GeneratedContent(json: jsonString)
         let content = try type.init(generatedContent)
+        // Same rationale as the `String` branch above: no usage or
+        // finish-reason plumbing from llama.cpp.
         return LanguageModelSession.Response(
           content: content,
           rawContent: generatedContent,

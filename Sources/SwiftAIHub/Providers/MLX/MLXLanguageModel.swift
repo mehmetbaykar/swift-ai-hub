@@ -887,6 +887,8 @@ import Foundation
         )
         let generatedContent = try GeneratedContent(json: jsonString)
         let content = try type.init(generatedContent)
+        // MLX runs locally and does not emit a token-count envelope or a
+        // finish-reason field; both fields stay `nil` via the no-usage init.
         return LanguageModelSession.Response(
           content: content,
           rawContent: generatedContent,
@@ -1022,6 +1024,8 @@ import Foundation
       }
 
       let text = allTextChunks.joined()
+      // MLX does not surface per-call token counts or a finish-reason field;
+      // `usage` and `finishReason` stay `nil` via the no-usage init.
       return LanguageModelSession.Response(
         content: text as! Content,
         rawContent: GeneratedContent(text),

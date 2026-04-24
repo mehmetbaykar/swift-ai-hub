@@ -135,10 +135,19 @@
       }
       let assistantText = tokenizer.decode(tokens: Array(assistantTokenSlice))
 
+      // CoreML exposes per-generation token counts but no finish-reason
+      // field, so `usage` is populated while `finishReason` stays `nil`.
+      let usage = Usage(
+        promptTokens: tokens.count,
+        completionTokens: assistantTokenSlice.count,
+        totalTokens: tokens.count + assistantTokenSlice.count
+      )
       return LanguageModelSession.Response(
         content: assistantText as! Content,
         rawContent: GeneratedContent(assistantText),
-        transcriptEntries: ArraySlice([])
+        transcriptEntries: ArraySlice([]),
+        usage: usage,
+        finishReason: nil
       )
     }
 

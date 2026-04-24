@@ -109,6 +109,9 @@
       if type == String.self {
         let fmResponse = try await fmSession.respond(to: fmPrompt, options: fmOptions)
         let generatedContent = GeneratedContent(fmResponse.content)
+        // Apple's FoundationModels framework does not expose token counts or
+        // a finish-reason field on its `Response` value, so both fields stay
+        // `nil` via the no-usage init.
         return LanguageModelSession.Response(
           content: fmResponse.content as! Content,
           rawContent: generatedContent,

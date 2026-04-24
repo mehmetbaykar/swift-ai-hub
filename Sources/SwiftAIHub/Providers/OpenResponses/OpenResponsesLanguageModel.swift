@@ -503,6 +503,8 @@ public struct OpenResponsesLanguageModel: LanguageModel {
     let url = baseURL.appendingPathComponent("responses")
     let maxRounds = session.maxToolCallRounds
     var round = 0
+    var lastUsage: Usage?
+    var lastFinishReason: FinishReason?
 
     while true {
       let params = try OpenResponsesAPI.createRequestBody(
@@ -514,12 +516,20 @@ public struct OpenResponsesLanguageModel: LanguageModel {
         stream: false
       )
       let body = try JSONEncoder().encode(params)
-      let resp: OpenResponsesAPI.Response = try await httpSession.fetch(
-        .post,
-        url: url,
-        headers: ["Authorization": "Bearer \(tokenProvider())"],
-        body: body
-      )
+      let resp: OpenResponsesAPI.Response
+      do {
+        resp = try await httpSession.fetch(
+          .post,
+          url: url,
+          headers: ["Authorization": "Bearer \(tokenProvider())"],
+          body: body
+        )
+      } catch {
+        try rethrowMappingRateLimit(error)
+      }
+
+      lastUsage = resp.usage?.hubUsage
+      lastFinishReason = resp.finishReason.map { FinishReason(rawValue: $0) }
 
       let toolCalls = extractToolCallsFromOutput(resp.output)
       lastOutput = resp.output
@@ -571,7 +581,9 @@ public struct OpenResponsesLanguageModel: LanguageModel {
       return LanguageModelSession.Response(
         content: text as! Content,
         rawContent: GeneratedContent(text),
-        transcriptEntries: ArraySlice(entries)
+        transcriptEntries: ArraySlice(entries),
+        usage: lastUsage,
+        finishReason: lastFinishReason
       )
     }
     if let jsonString = extractJSONFromOutput(lastOutput) {
@@ -580,7 +592,9 @@ public struct OpenResponsesLanguageModel: LanguageModel {
       return LanguageModelSession.Response(
         content: content,
         rawContent: generatedContent,
-        transcriptEntries: ArraySlice(entries)
+        transcriptEntries: ArraySlice(entries),
+        usage: lastUsage,
+        finishReason: lastFinishReason
       )
     }
     throw OpenResponsesLanguageModelError.noResponseGenerated
@@ -746,12 +760,16 @@ private enum OpenResponsesAPI {
     let output: [JSONValue]?
     let outputText: String?
     let error: OpenResponsesError?
+    let finishReason: String?
+    let usage: OpenResponsesUsage?
 
     private enum CodingKeys: String, CodingKey {
       case id
       case output
       case outputText = "output_text"
       case error
+      case finishReason = "finish_reason"
+      case usage
     }
   }
 
@@ -759,6 +777,33 @@ private enum OpenResponsesAPI {
     let message: String?
     let type: String?
     let code: String?
+  }
+
+  /// OpenResponses API token counting envelope. Mirrors the OpenAI Responses
+  /// shape (`input_tokens`/`output_tokens`/`total_tokens`) since this provider
+  /// is a vendor-agnostic wrapper over the same endpoint family.
+  struct OpenResponsesUsage: Decodable, Sendable {
+    let inputTokens: Int?
+    let outputTokens: Int?
+    let totalTokens: Int?
+    let promptTokens: Int?
+    let completionTokens: Int?
+
+    private enum CodingKeys: String, CodingKey {
+      case inputTokens = "input_tokens"
+      case outputTokens = "output_tokens"
+      case totalTokens = "total_tokens"
+      case promptTokens = "prompt_tokens"
+      case completionTokens = "completion_tokens"
+    }
+
+    var hubUsage: Usage {
+      Usage(
+        promptTokens: promptTokens ?? inputTokens,
+        completionTokens: completionTokens ?? outputTokens,
+        totalTokens: totalTokens
+      )
+    }
   }
 }
 
