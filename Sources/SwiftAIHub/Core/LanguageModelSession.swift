@@ -193,7 +193,23 @@ public final class LanguageModelSession: @unchecked Sendable {
       let stream = upstream
       let producer = Task {
         await session.respondGate.acquire()
+        // If the consumer already dropped the returned stream, `onTermination`
+        // cancelled this task before we acquired the gate. Release and bail
+        // so no transcript mutation happens for an abandoned stream.
+        if Task.isCancelled {
+          await session.respondGate.release()
+          continuation.finish()
+          return
+        }
         session.beginResponding()
+        // Prompt insertion is serialized under the same gate as non-streaming
+        // respond. Doing it here (instead of at the call site) closes two
+        // races: concurrent respond+stream interleaving prompts, and a
+        // streamResponse whose returned ResponseStream is never iterated
+        // leaving an orphan prompt with no matching response.
+        session.withMutation(keyPath: \.transcript) {
+          session.state.withLock { $0.transcript.append(promptEntry) }
+        }
         var lastSnapshot: ResponseStream<Content>.Snapshot?
         do {
           for try await snapshot in stream {
@@ -317,7 +333,7 @@ public final class LanguageModelSession: @unchecked Sendable {
     includeSchemaInPrompt: Bool = true,
     options: GenerationOptions = GenerationOptions()
   ) -> sending ResponseStream<Content> where Content: Generable {
-    // Add prompt to transcript
+    // Prompt entry is appended inside wrapStream under the session gate.
     let promptEntry = Transcript.Entry.prompt(
       Transcript.Prompt(
         segments: [.text(.init(content: prompt.description))],
@@ -325,9 +341,6 @@ public final class LanguageModelSession: @unchecked Sendable {
         responseFormat: nil
       )
     )
-    withMutation(keyPath: \.transcript) {
-      state.withLock { $0.transcript.append(promptEntry) }
-    }
 
     return wrapStream(
       model.streamResponse(
@@ -721,7 +734,7 @@ extension LanguageModelSession {
     }
     segments.append(contentsOf: images.map { .image($0) })
 
-    // Create prompt entry that will be added when stream starts
+    // Prompt entry is appended inside wrapStream under the session gate.
     let promptEntry = Transcript.Entry.prompt(
       Transcript.Prompt(
         segments: segments,
@@ -729,9 +742,6 @@ extension LanguageModelSession {
         responseFormat: nil
       )
     )
-    withMutation(keyPath: \.transcript) {
-      state.withLock { $0.transcript.append(promptEntry) }
-    }
 
     // Extract text content for the Prompt parameter
     let textPrompt = Prompt(prompt)
