@@ -39,6 +39,14 @@ public final class LanguageModelSession: @unchecked Sendable {
   /// surrendering. Ported from Conduit's `ChatSession.maxToolCallRounds` (default 8).
   public let maxToolCallRounds: Int
 
+  /// Retry behavior applied to each `Tool.call(arguments:)` invocation during
+  /// the provider tool-call loop. Default is ``RetryPolicy/disabled``.
+  public let toolRetryPolicy: RetryPolicy
+
+  /// Strategy for tool calls referencing names that are not registered on the
+  /// session. Default is ``MissingToolPolicy/throwError``.
+  public let missingToolPolicy: MissingToolPolicy
+
   public convenience init(
     model: any LanguageModel,
     tools: [any Tool] = [],
@@ -58,7 +66,9 @@ public final class LanguageModelSession: @unchecked Sendable {
       instructions: Instructions(instructions),
       transcript: Transcript(),
       toolExecutionDelegate: nil,
-      maxToolCallRounds: 8
+      maxToolCallRounds: 8,
+      toolRetryPolicy: .disabled,
+      missingToolPolicy: .throwError
     )
   }
 
@@ -67,7 +77,9 @@ public final class LanguageModelSession: @unchecked Sendable {
     tools: [any Tool] = [],
     instructions: Instructions? = nil,
     toolExecutionDelegate: (any ToolExecutionDelegate)? = nil,
-    maxToolCallRounds: Int = 8
+    maxToolCallRounds: Int = 8,
+    toolRetryPolicy: RetryPolicy = .disabled,
+    missingToolPolicy: MissingToolPolicy = .throwError
   ) {
     self.init(
       model: model,
@@ -75,7 +87,9 @@ public final class LanguageModelSession: @unchecked Sendable {
       instructions: instructions,
       transcript: Transcript(),
       toolExecutionDelegate: toolExecutionDelegate,
-      maxToolCallRounds: maxToolCallRounds
+      maxToolCallRounds: maxToolCallRounds,
+      toolRetryPolicy: toolRetryPolicy,
+      missingToolPolicy: missingToolPolicy
     )
   }
 
@@ -84,7 +98,9 @@ public final class LanguageModelSession: @unchecked Sendable {
     tools: [any Tool] = [],
     transcript: Transcript,
     toolExecutionDelegate: (any ToolExecutionDelegate)? = nil,
-    maxToolCallRounds: Int = 8
+    maxToolCallRounds: Int = 8,
+    toolRetryPolicy: RetryPolicy = .disabled,
+    missingToolPolicy: MissingToolPolicy = .throwError
   ) {
     self.init(
       model: model,
@@ -92,7 +108,9 @@ public final class LanguageModelSession: @unchecked Sendable {
       instructions: nil,
       transcript: transcript,
       toolExecutionDelegate: toolExecutionDelegate,
-      maxToolCallRounds: maxToolCallRounds
+      maxToolCallRounds: maxToolCallRounds,
+      toolRetryPolicy: toolRetryPolicy,
+      missingToolPolicy: missingToolPolicy
     )
   }
 
@@ -102,13 +120,17 @@ public final class LanguageModelSession: @unchecked Sendable {
     instructions: Instructions?,
     transcript: Transcript,
     toolExecutionDelegate: (any ToolExecutionDelegate)?,
-    maxToolCallRounds: Int
+    maxToolCallRounds: Int,
+    toolRetryPolicy: RetryPolicy = .disabled,
+    missingToolPolicy: MissingToolPolicy = .throwError
   ) {
     self.model = model
     self.tools = tools
     self.instructions = instructions
     self.toolExecutionDelegate = toolExecutionDelegate
     self.maxToolCallRounds = maxToolCallRounds
+    self.toolRetryPolicy = toolRetryPolicy
+    self.missingToolPolicy = missingToolPolicy
 
     // Build transcript with instructions if provided and not already in transcript
     var finalTranscript = transcript
@@ -814,8 +836,14 @@ extension LanguageModelSession {
     public struct Context: Sendable {
       public let debugDescription: String
 
-      public init(debugDescription: String) {
+      /// Optional rate-limit information parsed from the failing response's
+      /// HTTP headers. Populated by providers in Phase 2 for `.rateLimited`
+      /// errors; defaults to `nil` so existing call sites remain source-compatible.
+      public let rateLimit: RateLimitInfo?
+
+      public init(debugDescription: String, rateLimit: RateLimitInfo? = nil) {
         self.debugDescription = debugDescription
+        self.rateLimit = rateLimit
       }
     }
 
