@@ -61,3 +61,35 @@ struct UnpatternedTag {
   let json = try #require(String(data: data, encoding: .utf8))
   #expect(!json.contains("\"pattern\""))
 }
+
+// MARK: - M9: .constant / .anyOf guide propagation
+//
+// Previously GenerationGuide<String>.constant(_:) and .anyOf(_:) returned
+// empty guides and the macro never populated StringNode.enumChoices, so
+// Conduit-style `@Guide(.anyOf(["a","b"]))` compiled but had no effect on
+// the emitted schema. Now the macro extracts the literals and buildNode
+// threads them into StringNode.enumChoices.
+
+@Generable
+struct UnitTagged {
+  @Guide(description: "Temperature unit", .anyOf(["celsius", "fahrenheit"]))
+  var unit: String
+
+  @Guide(description: "Locked locale", .constant("en_US"))
+  var locale: String
+}
+
+@Test func anyOfGuidePropagatesEnumChoices() throws {
+  let encoder = JSONEncoder()
+  encoder.outputFormatting = [.sortedKeys]
+  let data = try encoder.encode(UnitTagged.generationSchema)
+  let json = try #require(String(data: data, encoding: .utf8))
+  #expect(json.contains("\"enum\":[\"celsius\",\"fahrenheit\"]"))
+}
+
+@Test func constantGuidePropagatesSingleEnumChoice() throws {
+  let encoder = JSONEncoder()
+  let data = try encoder.encode(UnitTagged.generationSchema)
+  let json = try #require(String(data: data, encoding: .utf8))
+  #expect(json.contains("\"enum\":[\"en_US\"]"))
+}

@@ -293,6 +293,22 @@ public struct GenerableMacro: MemberMacro, ExtensionMacro {
         constraints.minimum = minimum
         constraints.maximum = maximum
       }
+    case "constant":
+      if let literal = firstArgument.expression.as(StringLiteralExprSyntax.self),
+        let value = literal.representedLiteralValue
+      {
+        constraints.stringEnumChoices = [value]
+      }
+    case "anyOf":
+      if let arrayLiteral = firstArgument.expression.as(ArrayExprSyntax.self) {
+        let values = arrayLiteral.elements.compactMap { element -> String? in
+          guard let literal = element.expression.as(StringLiteralExprSyntax.self) else {
+            return nil
+          }
+          return literal.representedLiteralValue
+        }
+        if !values.isEmpty { constraints.stringEnumChoices = values }
+      }
     default:
       break
     }
@@ -428,8 +444,20 @@ public struct GenerableMacro: MemberMacro, ExtensionMacro {
       return guides.isEmpty ? "[]" : "[\(guides.joined(separator: ", "))]"
     }
 
-    if baseType == "String", let pattern = property.guide.constraints.pattern {
-      return "[.pattern(\(makeSwiftStringLiteralExpression(pattern)))]"
+    if baseType == "String" {
+      if let choices = property.guide.constraints.stringEnumChoices, !choices.isEmpty {
+        if choices.count == 1 {
+          guides.append(".constant(\(makeSwiftStringLiteralExpression(choices[0])))")
+        } else {
+          let listed = choices.map { makeSwiftStringLiteralExpression($0) }.joined(
+            separator: ", ")
+          guides.append(".anyOf([\(listed)])")
+        }
+      }
+      if let pattern = property.guide.constraints.pattern {
+        guides.append(".pattern(\(makeSwiftStringLiteralExpression(pattern)))")
+      }
+      return guides.isEmpty ? "[]" : "[\(guides.joined(separator: ", "))]"
     }
 
     return "[]"
@@ -1817,6 +1845,7 @@ private struct Constraints {
   var minimum: Double?
   var maximum: Double?
   var pattern: String?
+  var stringEnumChoices: [String]?
 }
 
 private struct PropertyInfo {

@@ -8,6 +8,7 @@ public struct GenerationGuide<Value>: Sendable {
   var minimum: Double?
   var maximum: Double?
   var pattern: String?
+  var stringEnumChoices: [String]?
 
   public init() {}
 
@@ -24,6 +25,10 @@ public struct GenerationGuide<Value>: Sendable {
   init(pattern: String) {
     self.pattern = pattern
   }
+
+  init(stringEnumChoices: [String]) {
+    self.stringEnumChoices = stringEnumChoices
+  }
 }
 
 // MARK: - String Guides
@@ -32,12 +37,12 @@ extension GenerationGuide where Value == String {
 
   /// Enforces that the string be precisely the given value.
   public static func constant(_ value: String) -> GenerationGuide<String> {
-    GenerationGuide<String>()
+    GenerationGuide<String>(stringEnumChoices: [value])
   }
 
   /// Enforces that the string be one of the provided values.
   public static func anyOf(_ values: [String]) -> GenerationGuide<String> {
-    GenerationGuide<String>()
+    GenerationGuide<String>(stringEnumChoices: values)
   }
 
   /// Enforces that the string follows the pattern.

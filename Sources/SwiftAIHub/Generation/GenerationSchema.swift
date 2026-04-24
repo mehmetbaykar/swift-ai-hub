@@ -749,11 +749,14 @@ extension GenerationSchema {
         return (.boolean, [:])
       } else if type == String.self {
         var pattern: String?
+        var enumChoices: [String]?
         for guide in guides {
           if let p = guide.pattern { pattern = p }
+          if let choices = guide.stringEnumChoices { enumChoices = choices }
         }
         return (
-          .string(StringNode(description: description, pattern: pattern, enumChoices: nil)), [:]
+          .string(
+            StringNode(description: description, pattern: pattern, enumChoices: enumChoices)), [:]
         )
       } else if type == Int.self {
         var minimum: Double?
