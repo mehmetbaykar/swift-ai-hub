@@ -337,7 +337,7 @@ public struct HuggingFaceLanguageModel: LanguageModel {
     let requestBody = try JSONSerialization.data(withJSONObject: body)
     let capturedHeaders = headers
 
-    return try await withRetry {
+    return try await withHFErrorMapping {
       try await self.performChatCompletionRequest(
         url: url, headers: capturedHeaders, body: requestBody)
     }
@@ -348,29 +348,16 @@ public struct HuggingFaceLanguageModel: LanguageModel {
     headers: [String: String],
     body: Data
   ) async throws -> LanguageModelSession.Response<String> {
-    // The enhanced path is URLSession-only. HTTPSession is a typealias for
-    // URLSession unless `AsyncHTTP` is enabled; callers that opt into the
-    // AsyncHTTP trait continue through the non-enhanced underlying path.
-    let urlSession = httpSession as URLSession
+    // Route through the shared `fetch` surface so both URLSession and HTTPClient
+    // backends work. `withHFErrorMapping` translates `URLSessionError.httpError`
+    // (including 429 headers) into `HuggingFaceLanguageModelError`.
+    let decoded: ChatCompletionsResponse = try await httpSession.fetch(
+      .post,
+      url: url,
+      headers: headers,
+      body: body
+    )
 
-    var request = URLRequest(url: url)
-    request.httpMethod = "POST"
-    request.addValue("application/json", forHTTPHeaderField: "Accept")
-    request.addValue("application/json", forHTTPHeaderField: "Content-Type")
-    for (k, v) in headers { request.addValue(v, forHTTPHeaderField: k) }
-    request.httpBody = body
-
-    let (data, response) = try await urlSession.data(for: request)
-
-    guard let http = response as? HTTPURLResponse else {
-      throw HuggingFaceLanguageModelError.invalidResponse
-    }
-
-    if http.statusCode >= 400 {
-      try Self.throwMappedError(statusCode: http.statusCode, data: data, response: http)
-    }
-
-    let decoded = try JSONDecoder().decode(ChatCompletionsResponse.self, from: data)
     guard let choice = decoded.choices.first else {
       throw HuggingFaceLanguageModelError.noResponseGenerated
     }

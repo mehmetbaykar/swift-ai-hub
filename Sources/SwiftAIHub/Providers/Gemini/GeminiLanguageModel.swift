@@ -543,72 +543,29 @@ public struct GeminiLanguageModel: LanguageModel {
 
   /// Issues a non-streaming generateContent POST and decodes the response.
   ///
-  /// Unlike `httpSession.fetch`, this path inspects the raw HTTPURLResponse so
-  /// a 429 can be converted into a `LanguageModelSession.GenerationError.rateLimited`
-  /// carrying a `RateLimitInfo` parsed from the response headers. Other non-2xx
-  /// statuses fall through to the existing `URLSessionError.httpError` surface
-  /// for backward compatibility.
+  /// Routes through `httpSession.fetch` (shared URLSession/HTTPClient surface)
+  /// and converts a 429 into `LanguageModelSession.GenerationError.rateLimited`
+  /// carrying `RateLimitInfo` parsed from the response headers.
   fileprivate func fetchGeminiResponse(
     url: URL,
     headers: [String: String],
     body: Data
   ) async throws -> GeminiGenerateContentResponse {
-    var request = URLRequest(url: url)
-    request.httpMethod = "POST"
-    request.addValue("application/json", forHTTPHeaderField: "Accept")
-    request.addValue("application/json", forHTTPHeaderField: "Content-Type")
-    for (key, value) in headers {
-      request.addValue(value, forHTTPHeaderField: key)
-    }
-    request.httpBody = body
-
-    #if canImport(FoundationNetworking)
-      var lockedData: Data?
-      var lockedResponse: URLResponse?
-      try await withLinuxRequestLock {
-        let (data, response) = try await httpSession.data(for: request)
-        lockedData = data
-        lockedResponse = response
-      }
-      guard let data = lockedData, let response = lockedResponse else {
-        throw URLSessionError.invalidResponse
-      }
-    #else
-      let (data, response) = try await httpSession.data(for: request)
-    #endif
-
-    guard let httpResponse = response as? HTTPURLResponse else {
-      throw URLSessionError.invalidResponse
-    }
-
-    if httpResponse.statusCode == 429 {
-      let headerDict = httpResponse.allHeaderFields.reduce(into: [String: String]()) {
-        result, pair in
-        if let key = pair.key as? String, let value = pair.value as? String {
-          result[key] = value
-        }
-      }
-      let detail = String(data: data, encoding: .utf8) ?? ""
+    do {
+      let response: GeminiGenerateContentResponse = try await httpSession.fetch(
+        .post,
+        url: url,
+        headers: headers,
+        body: body
+      )
+      return response
+    } catch let URLSessionError.httpError(statusCode, detail, headers) where statusCode == 429 {
       throw LanguageModelSession.GenerationError.rateLimited(
         .init(
           debugDescription: redactSensitiveHeaders(detail),
-          rateLimit: RateLimitInfo.from(headers: headerDict)
+          rateLimit: RateLimitInfo.from(headers: headers)
         )
       )
-    }
-
-    guard (200..<300).contains(httpResponse.statusCode) else {
-      let detail = String(data: data, encoding: .utf8) ?? "Invalid response"
-      throw URLSessionError.httpError(
-        statusCode: httpResponse.statusCode,
-        detail: redactSensitiveHeaders(detail)
-      )
-    }
-
-    do {
-      return try JSONDecoder().decode(GeminiGenerateContentResponse.self, from: data)
-    } catch {
-      throw URLSessionError.decodingError(detail: error.localizedDescription)
     }
   }
 
