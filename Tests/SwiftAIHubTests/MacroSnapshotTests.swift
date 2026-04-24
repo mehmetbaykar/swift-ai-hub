@@ -697,28 +697,64 @@
           }
 
           nonisolated public static var generationSchema: GenerationSchema {
-              let caseSchema = DynamicGenerationSchema(
-                  name: "SearchFilter_Case",
-                  anyOf: ["keyword", "dateRange", "bounded"]
-              )
-              let valueSchema = DynamicGenerationSchema(
-                  name: "SearchFilter_Value",
-                  anyOf: [DynamicGenerationSchema(type: String.self), DynamicGenerationSchema(name: "SearchFilter_dateRange_Payload", properties: [DynamicGenerationSchema.Property(name: "start", schema: DynamicGenerationSchema(type: Double.self)), DynamicGenerationSchema.Property(name: "end", schema: DynamicGenerationSchema(type: Double.self))]), DynamicGenerationSchema(type: Int.self)]
-              )
               let root = DynamicGenerationSchema(
                   name: String(reflecting: Self.self),
                   description: "Generated SearchFilter",
-                  properties: [
-                      DynamicGenerationSchema.Property(
-                          name: "case",
-                          description: "Enum case identifier",
-                          schema: caseSchema
-                      ),
-                      DynamicGenerationSchema.Property(
-                          name: "value",
-                          description: "Associated value data",
-                          schema: valueSchema
-                      )
+                  anyOf: [
+                  DynamicGenerationSchema(
+                      name: "SearchFilter_keyword_Branch",
+                      properties: [
+                          DynamicGenerationSchema.Property(
+                              name: "case",
+                              description: "Enum case identifier",
+                              schema: DynamicGenerationSchema(
+                                  name: "SearchFilter_keyword_CaseOnly",
+                                  anyOf: ["keyword"]
+                              )
+                          ),
+                          DynamicGenerationSchema.Property(
+                              name: "value",
+                              description: "Associated value data",
+                              schema: DynamicGenerationSchema(type: String.self)
+                          )
+                      ]
+                  ),
+                  DynamicGenerationSchema(
+                      name: "SearchFilter_dateRange_Branch",
+                      properties: [
+                          DynamicGenerationSchema.Property(
+                              name: "case",
+                              description: "Enum case identifier",
+                              schema: DynamicGenerationSchema(
+                                  name: "SearchFilter_dateRange_CaseOnly",
+                                  anyOf: ["dateRange"]
+                              )
+                          ),
+                          DynamicGenerationSchema.Property(
+                              name: "value",
+                              description: "Associated value data",
+                              schema: DynamicGenerationSchema(name: "SearchFilter_dateRange_Payload", properties: [DynamicGenerationSchema.Property(name: "start", schema: DynamicGenerationSchema(type: Double.self)), DynamicGenerationSchema.Property(name: "end", schema: DynamicGenerationSchema(type: Double.self))])
+                          )
+                      ]
+                  ),
+                  DynamicGenerationSchema(
+                      name: "SearchFilter_bounded_Branch",
+                      properties: [
+                          DynamicGenerationSchema.Property(
+                              name: "case",
+                              description: "Enum case identifier",
+                              schema: DynamicGenerationSchema(
+                                  name: "SearchFilter_bounded_CaseOnly",
+                                  anyOf: ["bounded"]
+                              )
+                          ),
+                          DynamicGenerationSchema.Property(
+                              name: "value",
+                              description: "Associated value data",
+                              schema: DynamicGenerationSchema(type: Int.self)
+                          )
+                      ]
+                  )
                   ]
               )
               do {

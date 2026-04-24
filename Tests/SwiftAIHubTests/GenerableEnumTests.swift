@@ -125,42 +125,64 @@ enum SearchFilter {
 @Test func generableEnumGenerationSchemaIsTaggedUnion() throws {
   let schema = SearchFilter.generationSchema
 
-  // Encode to JSON and inspect: the root object (once resolved) must have
-  // required ["case", "value"] and a "case" property whose schema is a
-  // string enum of all case names.
+  // F1 (HIGH #1): the schema is an anyOf of per-case branches, each branch
+  // an object `{case: stringEnum(caseName), value: caseSpecificPayload}`
+  // with required ["case", "value"]. This ties the discriminator to its
+  // specific payload so a schema-compliant output cannot disagree with the
+  // decoder (previously `case` and `value` were independent anyOf props,
+  // which allowed cartesian combinations the decoder rejected).
   let encoder = JSONEncoder()
   let data = try encoder.encode(schema)
   let json = try JSONSerialization.jsonObject(with: data) as? [String: Any]
   let defs = json?["$defs"] as? [String: Any]
 
-  // The root is a $ref into $defs.
+  // Root resolves through a $ref into $defs.
   let rootRef = (json?["$ref"] as? String)?.replacingOccurrences(of: "#/$defs/", with: "")
   #expect(rootRef != nil)
-
   guard let rootName = rootRef, let rootDef = defs?[rootName] as? [String: Any] else {
     Issue.record("Missing root def for \(String(describing: rootRef))")
     return
   }
 
-  #expect(rootDef["type"] as? String == "object")
-  let required = rootDef["required"] as? [String] ?? []
-  #expect(Set(required) == Set(["case", "value"]))
+  // Root is an anyOf of branches.
+  guard let branches = rootDef["anyOf"] as? [[String: Any]] else {
+    Issue.record("Root is not anyOf; got \(rootDef)")
+    return
+  }
+  #expect(branches.count == 3, "expected one branch per enum case, got \(branches.count)")
 
-  let properties = rootDef["properties"] as? [String: Any]
-  let caseProp = properties?["case"] as? [String: Any]
-  // "case" is a named $ref to the enum-of-case-names def.
-  let caseRef = (caseProp?["$ref"] as? String)?.replacingOccurrences(of: "#/$defs/", with: "")
-  #expect(caseRef != nil)
-  let caseDef = defs?[caseRef ?? ""] as? [String: Any]
-  let caseEnum = caseDef?["enum"] as? [String]
-  #expect(Set(caseEnum ?? []) == Set(["keyword", "dateRange", "bounded"]))
+  // Collect each branch's (caseName -> payloadSchema) pair.
+  var caseToPayload: [String: [String: Any]] = [:]
+  for branchRefOrObj in branches {
+    // Each branch is itself a $ref to a def.
+    let branchDef: [String: Any]
+    if let ref = (branchRefOrObj["$ref"] as? String)?.replacingOccurrences(
+      of: "#/$defs/", with: "")
+    {
+      guard let def = defs?[ref] as? [String: Any] else {
+        Issue.record("Missing branch def for \(ref)")
+        continue
+      }
+      branchDef = def
+    } else {
+      branchDef = branchRefOrObj
+    }
+    #expect(branchDef["type"] as? String == "object")
+    let req = branchDef["required"] as? [String] ?? []
+    #expect(Set(req) == Set(["case", "value"]))
 
-  // "value" is a $ref to the anyOf-of-payload-schemas def.
-  let valueProp = properties?["value"] as? [String: Any]
-  let valueRef = (valueProp?["$ref"] as? String)?.replacingOccurrences(of: "#/$defs/", with: "")
-  #expect(valueRef != nil)
-  let valueDef = defs?[valueRef ?? ""] as? [String: Any]
-  #expect(valueDef?["anyOf"] != nil)
+    let props = branchDef["properties"] as? [String: Any] ?? [:]
+    // "case" resolves to a stringEnum of exactly one name.
+    let caseProp = props["case"] as? [String: Any]
+    let caseRef = (caseProp?["$ref"] as? String)?.replacingOccurrences(of: "#/$defs/", with: "")
+    let caseDef = (caseRef.flatMap { defs?[$0] as? [String: Any] }) ?? caseProp ?? [:]
+    let caseEnum = caseDef["enum"] as? [String] ?? []
+    #expect(caseEnum.count == 1, "each branch must pin exactly one case name")
+    guard let caseName = caseEnum.first else { continue }
+    caseToPayload[caseName] = (props["value"] as? [String: Any]) ?? [:]
+  }
+
+  #expect(Set(caseToPayload.keys) == Set(["keyword", "dateRange", "bounded"]))
 }
 
 // MARK: - T2: unified canonical names + non-optional throw semantics

@@ -1667,35 +1667,52 @@ public struct GenerableMacro: MemberMacro, ExtensionMacro {
         }
       }
 
-      let payloadChoicesLiteral = payloadChoiceExprs.joined(separator: ", ")
+      // Build per-case branches that tie each discriminator to its specific
+      // payload. Previously the schema emitted `case` and `value` as
+      // independent anyOf properties, so the cartesian product of case
+      // names × payload shapes all passed schema validation while the
+      // decoder strict-switched on case name and threw on mismatched
+      // payloads. Each branch is now `{case: stringEnum(<name>), value:
+      // <that case's payload>}` so a schema-compliant output cannot
+      // disagree with the decoder.
+      let branchLiterals: [String] = cases.enumerated().map { index, enumCase in
+        let branchName = "\(enumName)_\(enumCase.name)_Branch"
+        let caseEnumName = "\(enumName)_\(enumCase.name)_CaseOnly"
+        let payloadExpr = payloadChoiceExprs[index]
+        return """
+                  DynamicGenerationSchema(
+                      name: "\(branchName)",
+                      properties: [
+                          DynamicGenerationSchema.Property(
+                              name: "case",
+                              description: "Enum case identifier",
+                              schema: DynamicGenerationSchema(
+                                  name: "\(caseEnumName)",
+                                  anyOf: ["\(enumCase.name)"]
+                              )
+                          ),
+                          DynamicGenerationSchema.Property(
+                              name: "value",
+                              description: "Associated value data",
+                              schema: \(payloadExpr)
+                          )
+                      ]
+                  )
+          """
+      }
+      let branchesLiteral = branchLiterals.joined(separator: ",\n")
       let descriptionLiteral =
         description.map { "\"\($0)\"" } ?? "\"Generated \(enumName)\""
+      _ = caseNames  // branches carry the case names individually
 
       return DeclSyntax(
         stringLiteral: """
           nonisolated public static var generationSchema: GenerationSchema {
-              let caseSchema = DynamicGenerationSchema(
-                  name: "\(enumName)_Case",
-                  anyOf: [\(caseNames)]
-              )
-              let valueSchema = DynamicGenerationSchema(
-                  name: "\(enumName)_Value",
-                  anyOf: [\(payloadChoicesLiteral)]
-              )
               let root = DynamicGenerationSchema(
                   name: String(reflecting: Self.self),
                   description: \(descriptionLiteral),
-                  properties: [
-                      DynamicGenerationSchema.Property(
-                          name: "case",
-                          description: "Enum case identifier",
-                          schema: caseSchema
-                      ),
-                      DynamicGenerationSchema.Property(
-                          name: "value",
-                          description: "Associated value data",
-                          schema: valueSchema
-                      )
+                  anyOf: [
+          \(branchesLiteral)
                   ]
               )
               do {
