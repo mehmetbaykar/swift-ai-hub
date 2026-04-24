@@ -140,7 +140,12 @@ public struct GenerableMacro: MemberMacro, ExtensionMacro {
         let identifier = binding.pattern.as(IdentifierPatternSyntax.self)
       {
         let propertyName = identifier.identifier.text
-        let propertyType = binding.typeAnnotation?.type.description ?? "String"
+        // Trim trailing trivia so `var x: String? = nil` doesn't surface as
+        // `"String? "` (trailing space between `?` and the equals would then
+        // break the suffix check in generatePropertyExtraction and emit the
+        // invalid `try String? (value)`).
+        let propertyType =
+          binding.typeAnnotation?.type.trimmedDescription ?? "String"
         let guideInfo = extractGuideInfo(from: varDecl.attributes, in: context)
 
         properties.append(

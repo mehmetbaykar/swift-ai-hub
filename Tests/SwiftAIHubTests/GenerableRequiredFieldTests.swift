@@ -50,6 +50,17 @@ struct OptionalNestedFixture {
   var inner: RequiredInnerFixture?
 }
 
+// M10 regression: Optional<Primitive> with `= nil` default. Previously the
+// macro read the type annotation including the trailing trivia before the
+// `=`, yielding "String? " with a space. The suffix-"?" check missed that
+// and the property-extraction path emitted an invalid `try String? (value)`
+// expression. Fix: trim at extraction.
+@Generable
+struct OptionalPrimitiveWithDefaultFixture {
+  var timezone: String? = nil
+  var limit: Int? = nil
+}
+
 // MARK: - Helpers
 
 private func structure(
@@ -291,4 +302,23 @@ private func structure(
   ])
   let decoded = try RequiredNestedFixture(content)
   #expect(decoded.inner.label == "lbl")
+}
+
+// MARK: - M10: Optional<Primitive> with `= nil` default
+
+@Test func optionalPrimitiveWithNilDefaultDecodesFromAbsence() throws {
+  let content = structure([])
+  let decoded = try OptionalPrimitiveWithDefaultFixture(content)
+  #expect(decoded.timezone == nil)
+  #expect(decoded.limit == nil)
+}
+
+@Test func optionalPrimitiveWithNilDefaultDecodesFromValue() throws {
+  let content = structure([
+    ("timezone", GeneratedContent(kind: .string("Europe/Berlin"))),
+    ("limit", GeneratedContent(kind: .number(10))),
+  ])
+  let decoded = try OptionalPrimitiveWithDefaultFixture(content)
+  #expect(decoded.timezone == "Europe/Berlin")
+  #expect(decoded.limit == 10)
 }
