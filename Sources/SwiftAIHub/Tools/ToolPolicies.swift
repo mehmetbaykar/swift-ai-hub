@@ -162,6 +162,17 @@ extension LanguageModelSession {
     precondition(transcriptCalls.count == decisions.count)
     let session = self
 
+    // Pre-validate missing tools before launching any side-effecting tool
+    // tasks. Under `.throwError`, an unknown name must fail the batch without
+    // letting sibling tasks run to completion first.
+    if case .throwError = missingToolPolicy {
+      for (index, call) in transcriptCalls.enumerated() {
+        if case .execute = decisions[index], toolsByName[call.toolName] == nil {
+          throw LanguageModelSession.MissingToolError(toolName: call.toolName)
+        }
+      }
+    }
+
     return try await withThrowingTaskGroup(of: (Int, Transcript.ToolOutput).self) { group in
       for (index, call) in transcriptCalls.enumerated() {
         let decision = decisions[index]

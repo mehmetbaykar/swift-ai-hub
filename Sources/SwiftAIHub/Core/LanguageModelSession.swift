@@ -224,14 +224,6 @@ public final class LanguageModelSession: @unchecked Sendable {
           return
         }
         session.beginResponding()
-        // Prompt insertion is serialized under the same gate as non-streaming
-        // respond. Doing it here (instead of at the call site) closes two
-        // races: concurrent respond+stream interleaving prompts, and a
-        // streamResponse whose returned ResponseStream is never iterated
-        // leaving an orphan prompt with no matching response.
-        session.withMutation(keyPath: \.transcript) {
-          session.state.withLock { $0.transcript.append(promptEntry) }
-        }
         var lastSnapshot: ResponseStream<Content>.Snapshot?
         do {
           for try await snapshot in stream {
@@ -385,7 +377,9 @@ public final class LanguageModelSession: @unchecked Sendable {
     includeSchemaInPrompt: Bool = true,
     options: GenerationOptions = GenerationOptions()
   ) -> sending ResponseStream<Content> where Content: Generable {
-    // Prompt entry is appended inside wrapStream under the session gate.
+    // Append prompt to transcript before constructing the upstream so providers
+    // that serialize `session.transcript` at stream-init time see the current
+    // prompt. Matches AnyLanguageModel's streamResponse ordering.
     let promptEntry = Transcript.Entry.prompt(
       Transcript.Prompt(
         segments: [.text(.init(content: prompt.description))],
@@ -393,6 +387,9 @@ public final class LanguageModelSession: @unchecked Sendable {
         responseFormat: nil
       )
     )
+    withMutation(keyPath: \.transcript) {
+      state.withLock { $0.transcript.append(promptEntry) }
+    }
 
     return wrapStream(
       model.streamResponse(
@@ -786,7 +783,9 @@ extension LanguageModelSession {
     }
     segments.append(contentsOf: images.map { .image($0) })
 
-    // Prompt entry is appended inside wrapStream under the session gate.
+    // Append prompt to transcript before constructing the upstream so providers
+    // that serialize `session.transcript` at stream-init time see the current
+    // prompt. Matches AnyLanguageModel's streamResponse ordering.
     let promptEntry = Transcript.Entry.prompt(
       Transcript.Prompt(
         segments: segments,
@@ -794,6 +793,9 @@ extension LanguageModelSession {
         responseFormat: nil
       )
     )
+    withMutation(keyPath: \.transcript) {
+      state.withLock { $0.transcript.append(promptEntry) }
+    }
 
     // Extract text content for the Prompt parameter
     let textPrompt = Prompt(prompt)

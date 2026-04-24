@@ -249,6 +249,7 @@ public struct HuggingFaceLanguageModel: LanguageModel {
     if session.tools.isEmpty, type == String.self {
       let hfOptions = options[custom: HuggingFaceLanguageModel.self]
       let stringResponse = try await runEnhancedStringRespond(
+        session: session,
         prompt: prompt,
         options: options,
         hfOptions: hfOptions
@@ -310,6 +311,7 @@ public struct HuggingFaceLanguageModel: LanguageModel {
   // MARK: - Enhanced String path
 
   private func runEnhancedStringRespond(
+    session: LanguageModelSession,
     prompt: Prompt,
     options: GenerationOptions,
     hfOptions: CustomGenerationOptions?
@@ -318,7 +320,7 @@ public struct HuggingFaceLanguageModel: LanguageModel {
 
     var body: [String: Any] = [
       "model": model,
-      "messages": [["role": "user", "content": prompt.description]],
+      "messages": Self.buildChatMessages(from: session.transcript),
       "stream": false,
     ]
     if let temperature = options.temperature { body["temperature"] = temperature }
@@ -504,5 +506,36 @@ public struct HuggingFaceLanguageModel: LanguageModel {
     let error: String?
     let error_type: String?
     let estimated_time: TimeInterval?
+  }
+
+  /// Flattens a `Transcript` into OpenAI-compatible chat messages. Instructions
+  /// become a system message; prompts → user; responses → assistant. Only text
+  /// segments are emitted — this path is only taken when `type == String.self`.
+  private static func buildChatMessages(from transcript: Transcript) -> [[String: Any]] {
+    var messages: [[String: Any]] = []
+    for entry in transcript {
+      switch entry {
+      case .instructions(let instructions):
+        let text = textSegmentsJoined(instructions.segments)
+        if !text.isEmpty { messages.append(["role": "system", "content": text]) }
+      case .prompt(let prompt):
+        let text = textSegmentsJoined(prompt.segments)
+        messages.append(["role": "user", "content": text])
+      case .response(let response):
+        let text = textSegmentsJoined(response.segments)
+        messages.append(["role": "assistant", "content": text])
+      case .toolCalls, .toolOutput:
+        // Enhanced path is only entered when session has no tools.
+        break
+      }
+    }
+    return messages
+  }
+
+  private static func textSegmentsJoined(_ segments: [Transcript.Segment]) -> String {
+    segments.compactMap { segment -> String? in
+      if case .text(let text) = segment { return text.content }
+      return nil
+    }.joined()
   }
 }
