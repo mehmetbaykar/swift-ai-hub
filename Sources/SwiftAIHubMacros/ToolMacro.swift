@@ -45,7 +45,11 @@ public struct ToolMacro: MemberMacro, ExtensionMacro {
 
     members.append(generateSchemaProperty(toolName: toolName, description: description))
 
-    if !hasInit(in: declaration) {
+    // Only synthesize `init()` when it would actually compile. If the user
+    // has stored dependency properties (e.g. `let llm: any LanguageModel`),
+    // an empty synthesized initializer would leave those fields
+    // uninitialized — the user must supply their own init.
+    if !hasInit(in: declaration) && !hasStoredPropertiesRequiringInit(in: declaration) {
       members.append("public init() {}")
     }
 
@@ -99,6 +103,31 @@ public struct ToolMacro: MemberMacro, ExtensionMacro {
     for member in declaration.memberBlock.members
     where member.decl.is(InitializerDeclSyntax.self) {
       return true
+    }
+    return false
+  }
+
+  /// Returns true if the struct has at least one stored instance property
+  /// without a default value — i.e. something that an auto-synthesized
+  /// `init()` would fail to initialize. Used to suppress the macro's
+  /// convenience init when the user has DI-style `let` dependencies.
+  private static func hasStoredPropertiesRequiringInit(
+    in declaration: some DeclGroupSyntax
+  ) -> Bool {
+    for member in declaration.memberBlock.members {
+      guard let varDecl = member.decl.as(VariableDeclSyntax.self) else { continue }
+      let isStatic = varDecl.modifiers.contains { modifier in
+        modifier.name.tokenKind == .keyword(.static)
+          || modifier.name.tokenKind == .keyword(.class)
+      }
+      if isStatic { continue }
+      for binding in varDecl.bindings {
+        // Computed properties have an accessorBlock; skip.
+        if binding.accessorBlock != nil { continue }
+        // Properties with a default value are fine.
+        if binding.initializer != nil { continue }
+        return true
+      }
     }
     return false
   }

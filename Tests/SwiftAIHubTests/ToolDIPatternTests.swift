@@ -36,6 +36,44 @@ struct EchoWithSinkTool {
   }
 }
 
+// Proves F2 fix: @Tool struct with a `let` DI property but NO explicit init
+// must still compile. Previously the macro unconditionally synthesized
+// `public init() {}` which either collided with the Swift-synthesized
+// memberwise init or failed to initialize the stored property.
+@Tool("Echo relying on memberwise init")
+struct EchoMemberwiseInitTool {
+  @Generable
+  struct Arguments {
+    @Parameter("message")
+    var msg: String
+  }
+
+  // DI dependency, no explicit init — Swift auto-synthesizes init(sink:).
+  let sink: any EchoSink
+
+  func execute(_ arguments: Arguments) async throws -> String {
+    await sink.record(arguments.msg)
+    return arguments.msg
+  }
+}
+
+@Test func memberwiseInitToolCompilesAndDispatches() async throws {
+  let sink = InMemorySink()
+  let tool = EchoMemberwiseInitTool(sink: sink)
+  let args = try EchoMemberwiseInitTool.Arguments(
+    GeneratedContent(
+      kind: .structure(
+        properties: ["msg": GeneratedContent(kind: .string("memberwise"))],
+        orderedKeys: ["msg"]
+      )
+    )
+  )
+  let out = try await tool.call(arguments: args)
+  #expect(out == "memberwise")
+  let seen = await sink.seen
+  #expect(seen == ["memberwise"])
+}
+
 @Test func echoToolDIFieldSurvivesDispatch() async throws {
   let sink = InMemorySink()
   let tool = EchoWithSinkTool(sink: sink)
