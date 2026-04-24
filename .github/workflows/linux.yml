@@ -16,5 +16,7 @@ jobs:
       - uses: actions/checkout@v4
       - name: swift build
         run: swift build
+      - name: swift build (strict concurrency)
+        run: swift build -Xswiftc -strict-concurrency=complete
       - name: swift test
         run: swift test
