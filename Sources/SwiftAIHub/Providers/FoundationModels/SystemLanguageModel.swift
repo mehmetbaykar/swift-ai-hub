@@ -83,6 +83,15 @@
       includeSchemaInPrompt: Bool,
       options: GenerationOptions
     ) async throws -> LanguageModelSession.Response<Content> where Content: Generable {
+      // FoundationModels runs its own internal tool-call loop when tools
+      // are passed to FoundationModels.LanguageModelSession, so hub-level
+      // ToolExecutionDelegate hooks never fire and hub's
+      // maxToolCallRounds cap cannot be enforced. Reject up-front when a
+      // caller has configured a non-default hub policy so the silent
+      // bypass is visible rather than masking stop/provideOutput
+      // decisions or round caps.
+      try Self.rejectUnsupportedHubToolPolicy(for: session)
+
       let fmPrompt = prompt.toFoundationModels()
       let fmOptions = options.toFoundationModels()
 
@@ -165,6 +174,17 @@
       includeSchemaInPrompt: Bool,
       options: GenerationOptions
     ) -> sending LanguageModelSession.ResponseStream<Content> where Content: Generable {
+      // Same bypass guard as the non-streaming respond path — see comment
+      // there for details. Surface the error through the stream instead
+      // of making the call site throw synchronously.
+      if let error = Self.unsupportedHubToolPolicyError(for: session) {
+        return LanguageModelSession.ResponseStream(
+          stream: AsyncThrowingStream { continuation in
+            continuation.finish(throwing: error)
+          }
+        )
+      }
+
       let fmPrompt = prompt.toFoundationModels()
       let fmOptions = options.toFoundationModels()
 
@@ -374,6 +394,58 @@
         issues: fmIssues,
         desiredOutput: fmDesiredOutput
       )
+    }
+
+    // MARK: - Hub tool-policy bypass guards
+    //
+    // FoundationModels.LanguageModelSession owns the tool-call loop when
+    // tools are attached to it, so hub-level ToolExecutionDelegate hooks
+    // and maxToolCallRounds are not reachable. Both code paths surface
+    // this as an explicit error rather than silently ignoring the
+    // configured hub policy.
+
+    /// Thrown when SystemLanguageModel is invoked with a hub tool policy
+    /// FoundationModels cannot honor (custom delegate or a non-default
+    /// round cap).
+    public enum UnsupportedHubToolPolicyError: Error, CustomStringConvertible {
+      case toolExecutionDelegateWithFoundationModels
+      case nonDefaultMaxToolCallRoundsWithFoundationModels(Int)
+
+      public var description: String {
+        switch self {
+        case .toolExecutionDelegateWithFoundationModels:
+          return
+            "SystemLanguageModel cannot route tool calls through LanguageModelSession.toolExecutionDelegate because FoundationModels.LanguageModelSession runs its own internal tool-call loop. Remove the delegate, clear session.tools, or use a provider that owns its tool loop."
+        case .nonDefaultMaxToolCallRoundsWithFoundationModels(let value):
+          return
+            "SystemLanguageModel cannot enforce maxToolCallRounds=\(value); FoundationModels runs its own tool-call loop. Use the default cap (8) or switch providers."
+        }
+      }
+    }
+
+    /// Throws when `session` has a hub tool policy FoundationModels cannot
+    /// honor. Called from `respond(...)`.
+    fileprivate static func rejectUnsupportedHubToolPolicy(
+      for session: LanguageModelSession
+    ) throws {
+      if let error = unsupportedHubToolPolicyError(for: session) {
+        throw error
+      }
+    }
+
+    /// Returns an error to surface on the stream when `session` has a hub
+    /// tool policy FoundationModels cannot honor; returns `nil` otherwise.
+    fileprivate static func unsupportedHubToolPolicyError(
+      for session: LanguageModelSession
+    ) -> UnsupportedHubToolPolicyError? {
+      guard !session.tools.isEmpty else { return nil }
+      if session.toolExecutionDelegate != nil {
+        return .toolExecutionDelegateWithFoundationModels
+      }
+      if session.maxToolCallRounds != 8 {
+        return .nonDefaultMaxToolCallRoundsWithFoundationModels(session.maxToolCallRounds)
+      }
+      return nil
     }
 
   }
