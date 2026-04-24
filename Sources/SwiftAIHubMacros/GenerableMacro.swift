@@ -738,9 +738,20 @@ public struct GenerableMacro: MemberMacro, ExtensionMacro {
           """
       )
     } else {
+      // `MissingFieldKey` is referenced by `DecodingError.keyNotFound` calls
+      // the property-extraction block emits for required (non-optional)
+      // properties. Declared locally so it stays a private implementation
+      // detail of the generated init.
       return DeclSyntax(
         stringLiteral: """
           nonisolated public init(_ generatedContent: GeneratedContent) throws {
+              struct MissingFieldKey: CodingKey {
+                  var stringValue: String
+                  var intValue: Int? { nil }
+                  init(stringValue: String) { self.stringValue = stringValue }
+                  init?(intValue: Int) { nil }
+              }
+
               self._rawGeneratedContent = generatedContent
 
               guard case .structure(let properties, _) = generatedContent.kind else {
@@ -809,34 +820,47 @@ public struct GenerableMacro: MemberMacro, ExtensionMacro {
   private static func generatePropertyExtraction(propertyName: String, propertyType: String)
     -> String
   {
+    // Required (non-optional) property: absence or .null must throw rather
+    // than substitute a placeholder default. See docs/02-macros.md:15 —
+    // "No placeholder defaults are ever emitted." Side-effecting tools
+    // would otherwise run with fabricated arguments on malformed model
+    // output.
+    //
+    // Absence → `DecodingError.keyNotFound`. `.null` → `DecodingError.valueNotFound`.
+    func requiredPrimitive(_ base: String) -> String {
+      return """
+        if let value = properties["\(propertyName)"] {
+            switch value.kind {
+            case .null:
+                throw DecodingError.valueNotFound(
+                    \(base).self,
+                    DecodingError.Context(codingPath: [], debugDescription: "Required property '\(propertyName)' was null")
+                )
+            default:
+                self.\(propertyName) = try value.value(\(base).self)
+            }
+        } else {
+            throw DecodingError.keyNotFound(
+                MissingFieldKey(stringValue: "\(propertyName)"),
+                DecodingError.Context(codingPath: [], debugDescription: "Missing required property '\(propertyName)'")
+            )
+        }
+        """
+    }
+
     switch propertyType {
     case "String":
-      return """
-        self.\(propertyName) = try properties["\(propertyName)"]?.value(String.self) ?? ""
-        """
+      return requiredPrimitive("String")
     case "Int":
-      return """
-        self.\(propertyName) = try properties["\(propertyName)"]?.value(Int.self) ?? 0
-        """
+      return requiredPrimitive("Int")
     case "Double":
-      return """
-        self.\(propertyName) = try properties["\(propertyName)"]?.value(Double.self) ?? 0.0
-        """
+      return requiredPrimitive("Double")
     case "Float":
-      return """
-        self.\(propertyName) = try properties["\(propertyName)"]?.value(Float.self) ?? 0.0
-        """
+      return requiredPrimitive("Float")
     case "Bool":
-      return """
-        self.\(propertyName) = try properties["\(propertyName)"]?.value(Bool.self) ?? false
-        """
+      return requiredPrimitive("Bool")
     default:
       let isOptional = propertyType.hasSuffix("?")
-      let isDictionary = isDictionaryType(
-        propertyType.replacingOccurrences(of: "?", with: "")
-      )
-      let isArray =
-        !isDictionary && propertyType.hasPrefix("[") && propertyType.hasSuffix("]")
 
       if isOptional {
         let baseType = propertyType.replacingOccurrences(of: "?", with: "")
@@ -871,28 +895,26 @@ public struct GenerableMacro: MemberMacro, ExtensionMacro {
             """
         }
 
-      } else if isDictionary {
-        return """
-          if let value = properties["\(propertyName)"] {
-              self.\(propertyName) = try \(propertyType)(value)
-          } else {
-              self.\(propertyName) = [:]
-          }
-          """
-      } else if isArray {
-        return """
-          if let value = properties["\(propertyName)"] {
-              self.\(propertyName) = try \(propertyType)(value)
-          } else {
-              self.\(propertyName) = []
-          }
-          """
       } else {
+        // Required array or nested @Generable: absence and `.null` both
+        // throw. Previously fell back to [], [:], or
+        // `Type(GeneratedContent("{}"))` which silently fabricated data.
         return """
           if let value = properties["\(propertyName)"] {
-              self.\(propertyName) = try \(propertyType)(value)
+              switch value.kind {
+              case .null:
+                  throw DecodingError.valueNotFound(
+                      \(propertyType).self,
+                      DecodingError.Context(codingPath: [], debugDescription: "Required property '\(propertyName)' was null")
+                  )
+              default:
+                  self.\(propertyName) = try \(propertyType)(value)
+              }
           } else {
-              self.\(propertyName) = try \(propertyType)(GeneratedContent("{}"))
+              throw DecodingError.keyNotFound(
+                  MissingFieldKey(stringValue: "\(propertyName)"),
+                  DecodingError.Context(codingPath: [], debugDescription: "Missing required property '\(propertyName)'")
+              )
           }
           """
       }

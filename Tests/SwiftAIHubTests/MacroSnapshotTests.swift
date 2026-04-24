@@ -77,6 +77,19 @@
           }
 
           nonisolated public init(_ generatedContent: GeneratedContent) throws {
+              struct MissingFieldKey: CodingKey {
+                  var stringValue: String
+                  var intValue: Int? {
+                    nil
+                  }
+                  init(stringValue: String) {
+                    self.stringValue = stringValue
+                  }
+                  init?(intValue: Int) {
+                    nil
+                  }
+              }
+
               self._rawGeneratedContent = generatedContent
 
               guard case .structure(let properties, _) = generatedContent.kind else {
@@ -86,8 +99,38 @@
                   )
               }
 
-              self.name = try properties["name"]?.value(String.self) ?? ""
-                      self.age = try properties["age"]?.value(Int.self) ?? 0
+              if let value = properties["name"] {
+              switch value.kind {
+              case .null:
+                  throw DecodingError.valueNotFound(
+                      String.self,
+                      DecodingError.Context(codingPath: [], debugDescription: "Required property 'name' was null")
+                  )
+              default:
+                  self.name = try value.value(String.self)
+              }
+              } else {
+              throw DecodingError.keyNotFound(
+                  MissingFieldKey(stringValue: "name"),
+                  DecodingError.Context(codingPath: [], debugDescription: "Missing required property 'name'")
+              )
+              }
+                      if let value = properties["age"] {
+              switch value.kind {
+              case .null:
+                  throw DecodingError.valueNotFound(
+                      Int.self,
+                      DecodingError.Context(codingPath: [], debugDescription: "Required property 'age' was null")
+                  )
+              default:
+                  self.age = try value.value(Int.self)
+              }
+              } else {
+              throw DecodingError.keyNotFound(
+                  MissingFieldKey(stringValue: "age"),
+                  DecodingError.Context(codingPath: [], debugDescription: "Missing required property 'age'")
+              )
+              }
           }
 
           nonisolated public var generatedContent: GeneratedContent {
@@ -204,6 +247,19 @@
           }
 
           nonisolated public init(_ generatedContent: GeneratedContent) throws {
+              struct MissingFieldKey: CodingKey {
+                  var stringValue: String
+                  var intValue: Int? {
+                    nil
+                  }
+                  init(stringValue: String) {
+                    self.stringValue = stringValue
+                  }
+                  init?(intValue: Int) {
+                    nil
+                  }
+              }
+
               self._rawGeneratedContent = generatedContent
 
               guard case .structure(let properties, _) = generatedContent.kind else {
@@ -213,7 +269,22 @@
                   )
               }
 
-              self.city = try properties["city"]?.value(String.self) ?? ""
+              if let value = properties["city"] {
+              switch value.kind {
+              case .null:
+                  throw DecodingError.valueNotFound(
+                      String.self,
+                      DecodingError.Context(codingPath: [], debugDescription: "Required property 'city' was null")
+                  )
+              default:
+                  self.city = try value.value(String.self)
+              }
+              } else {
+              throw DecodingError.keyNotFound(
+                  MissingFieldKey(stringValue: "city"),
+                  DecodingError.Context(codingPath: [], debugDescription: "Missing required property 'city'")
+              )
+              }
           }
 
           nonisolated public var generatedContent: GeneratedContent {
@@ -301,6 +372,19 @@
           }
 
           nonisolated public init(_ generatedContent: GeneratedContent) throws {
+              struct MissingFieldKey: CodingKey {
+                  var stringValue: String
+                  var intValue: Int? {
+                    nil
+                  }
+                  init(stringValue: String) {
+                    self.stringValue = stringValue
+                  }
+                  init?(intValue: Int) {
+                    nil
+                  }
+              }
+
               self._rawGeneratedContent = generatedContent
 
               guard case .structure(let properties, _) = generatedContent.kind else {
@@ -310,11 +394,37 @@
                   )
               }
 
-              self.name = try properties["name"]?.value(String.self) ?? ""
-                      if let value = properties["address"] {
-              self.address = try Address(value)
+              if let value = properties["name"] {
+              switch value.kind {
+              case .null:
+                  throw DecodingError.valueNotFound(
+                      String.self,
+                      DecodingError.Context(codingPath: [], debugDescription: "Required property 'name' was null")
+                  )
+              default:
+                  self.name = try value.value(String.self)
+              }
               } else {
-              self.address = try Address(GeneratedContent("{}"))
+              throw DecodingError.keyNotFound(
+                  MissingFieldKey(stringValue: "name"),
+                  DecodingError.Context(codingPath: [], debugDescription: "Missing required property 'name'")
+              )
+              }
+                      if let value = properties["address"] {
+              switch value.kind {
+              case .null:
+                  throw DecodingError.valueNotFound(
+                      Address.self,
+                      DecodingError.Context(codingPath: [], debugDescription: "Required property 'address' was null")
+                  )
+              default:
+                  self.address = try Address(value)
+              }
+              } else {
+              throw DecodingError.keyNotFound(
+                  MissingFieldKey(stringValue: "address"),
+                  DecodingError.Context(codingPath: [], debugDescription: "Missing required property 'address'")
+              )
               }
           }
 
@@ -608,6 +718,19 @@
           }
 
           nonisolated public init(_ generatedContent: GeneratedContent) throws {
+              struct MissingFieldKey: CodingKey {
+                  var stringValue: String
+                  var intValue: Int? {
+                    nil
+                  }
+                  init(stringValue: String) {
+                    self.stringValue = stringValue
+                  }
+                  init?(intValue: Int) {
+                    nil
+                  }
+              }
+
               self._rawGeneratedContent = generatedContent
 
               guard case .structure(let properties, _) = generatedContent.kind else {
@@ -617,8 +740,38 @@
                   )
               }
 
-              self.name = try properties["name"]?.value(String.self) ?? ""
-                      self.color = try properties["color"]?.value(String.self) ?? ""
+              if let value = properties["name"] {
+              switch value.kind {
+              case .null:
+                  throw DecodingError.valueNotFound(
+                      String.self,
+                      DecodingError.Context(codingPath: [], debugDescription: "Required property 'name' was null")
+                  )
+              default:
+                  self.name = try value.value(String.self)
+              }
+              } else {
+              throw DecodingError.keyNotFound(
+                  MissingFieldKey(stringValue: "name"),
+                  DecodingError.Context(codingPath: [], debugDescription: "Missing required property 'name'")
+              )
+              }
+                      if let value = properties["color"] {
+              switch value.kind {
+              case .null:
+                  throw DecodingError.valueNotFound(
+                      String.self,
+                      DecodingError.Context(codingPath: [], debugDescription: "Required property 'color' was null")
+                  )
+              default:
+                  self.color = try value.value(String.self)
+              }
+              } else {
+              throw DecodingError.keyNotFound(
+                  MissingFieldKey(stringValue: "color"),
+                  DecodingError.Context(codingPath: [], debugDescription: "Missing required property 'color'")
+              )
+              }
           }
 
           nonisolated public var generatedContent: GeneratedContent {
@@ -737,6 +890,19 @@
             }
 
             nonisolated public init(_ generatedContent: GeneratedContent) throws {
+                struct MissingFieldKey: CodingKey {
+                    var stringValue: String
+                    var intValue: Int? {
+                      nil
+                    }
+                    init(stringValue: String) {
+                      self.stringValue = stringValue
+                    }
+                    init?(intValue: Int) {
+                      nil
+                    }
+                }
+
                 self._rawGeneratedContent = generatedContent
 
                 guard case .structure(let properties, _) = generatedContent.kind else {
@@ -746,7 +912,22 @@
                     )
                 }
 
-                self.timezone = try properties["timezone"]?.value(String.self) ?? ""
+                if let value = properties["timezone"] {
+                switch value.kind {
+                case .null:
+                    throw DecodingError.valueNotFound(
+                        String.self,
+                        DecodingError.Context(codingPath: [], debugDescription: "Required property 'timezone' was null")
+                    )
+                default:
+                    self.timezone = try value.value(String.self)
+                }
+                } else {
+                throw DecodingError.keyNotFound(
+                    MissingFieldKey(stringValue: "timezone"),
+                    DecodingError.Context(codingPath: [], debugDescription: "Missing required property 'timezone'")
+                )
+                }
             }
 
             nonisolated public var generatedContent: GeneratedContent {
@@ -896,6 +1077,19 @@
             }
 
             nonisolated public init(_ generatedContent: GeneratedContent) throws {
+                struct MissingFieldKey: CodingKey {
+                    var stringValue: String
+                    var intValue: Int? {
+                      nil
+                    }
+                    init(stringValue: String) {
+                      self.stringValue = stringValue
+                    }
+                    init?(intValue: Int) {
+                      nil
+                    }
+                }
+
                 self._rawGeneratedContent = generatedContent
 
                 guard case .structure(let properties, _) = generatedContent.kind else {
@@ -905,8 +1099,38 @@
                     )
                 }
 
-                self.message = try properties["message"]?.value(String.self) ?? ""
-                        self.count = try properties["count"]?.value(Int.self) ?? 0
+                if let value = properties["message"] {
+                switch value.kind {
+                case .null:
+                    throw DecodingError.valueNotFound(
+                        String.self,
+                        DecodingError.Context(codingPath: [], debugDescription: "Required property 'message' was null")
+                    )
+                default:
+                    self.message = try value.value(String.self)
+                }
+                } else {
+                throw DecodingError.keyNotFound(
+                    MissingFieldKey(stringValue: "message"),
+                    DecodingError.Context(codingPath: [], debugDescription: "Missing required property 'message'")
+                )
+                }
+                        if let value = properties["count"] {
+                switch value.kind {
+                case .null:
+                    throw DecodingError.valueNotFound(
+                        Int.self,
+                        DecodingError.Context(codingPath: [], debugDescription: "Required property 'count' was null")
+                    )
+                default:
+                    self.count = try value.value(Int.self)
+                }
+                } else {
+                throw DecodingError.keyNotFound(
+                    MissingFieldKey(stringValue: "count"),
+                    DecodingError.Context(codingPath: [], debugDescription: "Missing required property 'count'")
+                )
+                }
             }
 
             nonisolated public var generatedContent: GeneratedContent {
