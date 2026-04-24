@@ -97,4 +97,33 @@ struct KimiWireTests {
     let consumed = await MockRequestScript.shared.consumedCount(host: kimiHost)
     #expect(consumed == 2)
   }
+
+  // M14: docs/04 §Testing — Kimi wraps OpenAI chat-completions.
+  @Test func requestBodySerialization() async throws {
+    await MockRequestScript.shared.reset(host: kimiHost)
+    await MockRequestScript.shared.enqueue(
+      MockResponse(json: kimiFinalAnswerBody), host: kimiHost)
+
+    let session = LanguageModelSession(
+      model: makeKimiModel(),
+      tools: [KimiEchoTool()]
+    )
+    _ = try await session.respond(to: "hello")
+
+    let request = try #require(
+      await MockRequestScript.shared.observedRequests(host: kimiHost).first)
+    #expect(request.url?.path == "/v1/chat/completions")
+    #expect(request.value(forHTTPHeaderField: "Authorization") == "Bearer test-key")
+    let bodyData = try #require(request.httpBody)
+    let body = try #require(
+      try JSONSerialization.jsonObject(with: bodyData) as? [String: Any])
+    #expect(body["model"] as? String == "moonshot-v1-8k")
+    let messages = try #require(body["messages"] as? [[String: Any]])
+    // Kimi wraps OpenAILanguageModel via the `.blocks` content path: user
+    // content is `[{type:"text", text:"hello"}]`, not a plain string.
+    #expect(messages.contains(where: userMessageContains("hello")))
+    let tools = try #require(body["tools"] as? [[String: Any]])
+    let fn = try #require(tools.first?["function"] as? [String: Any])
+    #expect(fn["name"] as? String == "kimiEcho")
+  }
 }

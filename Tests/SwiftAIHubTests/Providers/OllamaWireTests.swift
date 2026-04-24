@@ -86,6 +86,36 @@ struct OllamaWireTests {
     #expect(consumed == 2)
   }
 
+  // M14: docs/04 §Testing — exact request-body shape for /api/chat.
+  @Test func requestBodySerialization() async throws {
+    await MockRequestScript.shared.reset(host: ollamaHost)
+    await MockRequestScript.shared.enqueue(
+      MockResponse(json: ollamaFinalAnswerBody), host: ollamaHost)
+
+    let session = LanguageModelSession(
+      model: makeOllamaModel(),
+      tools: [OllamaEchoTool()]
+    )
+    _ = try await session.respond(to: "hello")
+
+    let request = try #require(
+      await MockRequestScript.shared.observedRequests(host: ollamaHost).first)
+    #expect(request.url?.path == "/api/chat")
+    let bodyData = try #require(request.httpBody)
+    let body = try #require(
+      try JSONSerialization.jsonObject(with: bodyData) as? [String: Any])
+
+    #expect(body["model"] as? String == "qwen-test")
+    let messages = try #require(body["messages"] as? [[String: Any]])
+    let userMessages = messages.filter { ($0["role"] as? String) == "user" }
+    let joined = userMessages.compactMap { $0["content"] as? String }.joined()
+    #expect(joined.contains("hello"))
+
+    let tools = try #require(body["tools"] as? [[String: Any]])
+    let fn = try #require(tools.first?["function"] as? [String: Any])
+    #expect(fn["name"] as? String == "ollamaEcho")
+  }
+
   @Test func maxToolCallRoundsOneThrowsOnSecondToolCall() async throws {
     await MockRequestScript.shared.reset(host: ollamaHost)
     await MockRequestScript.shared.enqueue(

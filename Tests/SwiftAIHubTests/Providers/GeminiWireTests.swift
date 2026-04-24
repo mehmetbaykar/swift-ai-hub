@@ -89,6 +89,39 @@ struct GeminiWireTests {
     #expect(consumed == 2)
   }
 
+  // M14 regression: docs/04 §Testing requires request-body parity. Ensures
+  // the outbound JSON body for a generateContent call carries the expected
+  // model path, user message, and tool descriptors in the `function_declarations`
+  // shape specific to Gemini.
+  @Test func requestBodySerialization() async throws {
+    await MockRequestScript.shared.reset(host: geminiHost)
+    await MockRequestScript.shared.enqueue(
+      MockResponse(json: geminiFinalAnswerBody), host: geminiHost)
+
+    let session = LanguageModelSession(
+      model: makeGeminiModel(),
+      tools: [GeminiEchoTool()]
+    )
+    _ = try await session.respond(to: "hello")
+
+    let requests = await MockRequestScript.shared.observedRequests(host: geminiHost)
+    let request = try #require(requests.first)
+    #expect(request.url?.path.contains("gemini-test") == true)
+    let bodyData = try #require(request.httpBody)
+    let body = try #require(
+      try JSONSerialization.jsonObject(with: bodyData) as? [String: Any])
+
+    let contents = try #require(body["contents"] as? [[String: Any]])
+    #expect(!contents.isEmpty)
+    let firstParts = try #require(contents.first?["parts"] as? [[String: Any]])
+    let userText = firstParts.compactMap { $0["text"] as? String }.joined()
+    #expect(userText.contains("hello"))
+
+    let tools = try #require(body["tools"] as? [[String: Any]])
+    let decls = try #require(tools.first?["function_declarations"] as? [[String: Any]])
+    #expect(decls.contains { ($0["name"] as? String) == "geminiEcho" })
+  }
+
   @Test func maxToolCallRoundsOneThrowsOnSecondFunctionCall() async throws {
     await MockRequestScript.shared.reset(host: geminiHost)
     await MockRequestScript.shared.enqueue(

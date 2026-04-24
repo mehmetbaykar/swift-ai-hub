@@ -100,4 +100,37 @@ struct HuggingFaceWireTests {
     let consumed = await MockRequestScript.shared.consumedCount(host: huggingFaceHost)
     #expect(consumed == 2)
   }
+
+  // M14: docs/04 §Testing — HuggingFace wraps OpenAI's chat-completions
+  // body; verify the wrapped request still carries the expected fields.
+  @Test func requestBodySerialization() async throws {
+    await MockRequestScript.shared.reset(host: huggingFaceHost)
+    await MockRequestScript.shared.enqueue(
+      MockResponse(json: huggingFaceFinalAnswerBody), host: huggingFaceHost)
+
+    let session = LanguageModelSession(
+      model: makeHuggingFaceModel(),
+      tools: [HuggingFaceEchoTool()]
+    )
+    _ = try await session.respond(to: "hello")
+
+    let request = try #require(
+      await MockRequestScript.shared.observedRequests(host: huggingFaceHost).first)
+    #expect(request.url?.path == "/v1/chat/completions")
+    #expect(request.value(forHTTPHeaderField: "Authorization") == "Bearer test-key")
+    let bodyData = try #require(request.httpBody)
+    let body = try #require(
+      try JSONSerialization.jsonObject(with: bodyData) as? [String: Any])
+
+    #expect(body["model"] as? String == "meta-llama/test")
+    let messages = try #require(body["messages"] as? [[String: Any]])
+    // HuggingFace wraps OpenAILanguageModel through the `.blocks` content
+    // path, so user content is `[{type:"text", text:"…"}]` rather than a
+    // plain string. Shared helper handles both shapes.
+    #expect(messages.contains(where: userMessageContains("hello")))
+
+    let tools = try #require(body["tools"] as? [[String: Any]])
+    let fn = try #require(tools.first?["function"] as? [String: Any])
+    #expect(fn["name"] as? String == "huggingFaceEcho")
+  }
 }

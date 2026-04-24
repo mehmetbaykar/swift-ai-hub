@@ -86,6 +86,35 @@ struct OpenResponsesWireTests {
     #expect(consumed == 2)
   }
 
+  // M14: docs/04 §Testing — exact request-body shape for /v1/responses.
+  @Test func requestBodySerialization() async throws {
+    await MockRequestScript.shared.reset(host: openResponsesHost)
+    await MockRequestScript.shared.enqueue(
+      MockResponse(json: openResponsesFinalAnswerBody), host: openResponsesHost)
+
+    let session = LanguageModelSession(
+      model: makeOpenResponsesModel(),
+      tools: [OpenResponsesEchoTool()]
+    )
+    _ = try await session.respond(to: "hello")
+
+    let request = try #require(
+      await MockRequestScript.shared.observedRequests(host: openResponsesHost).first)
+    #expect(request.url?.path == "/v1/responses")
+    #expect(request.value(forHTTPHeaderField: "Authorization") == "Bearer test-key")
+    let bodyData = try #require(request.httpBody)
+    let body = try #require(
+      try JSONSerialization.jsonObject(with: bodyData) as? [String: Any])
+
+    #expect(body["model"] as? String == "gpt-test")
+    // OpenResponses uses a flat `{type:"function", name, description, parameters}`
+    // tool descriptor (not nested under `function:`).
+    let tools = try #require(body["tools"] as? [[String: Any]])
+    let echoTool = try #require(tools.first { ($0["name"] as? String) == "openResponsesEcho" })
+    #expect(echoTool["type"] as? String == "function")
+    #expect(echoTool["parameters"] is [String: Any])
+  }
+
   @Test func maxToolCallRoundsOneThrowsOnSecondToolCall() async throws {
     await MockRequestScript.shared.reset(host: openResponsesHost)
     await MockRequestScript.shared.enqueue(

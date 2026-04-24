@@ -97,4 +97,32 @@ struct MiniMaxWireTests {
     let consumed = await MockRequestScript.shared.consumedCount(host: miniMaxHost)
     #expect(consumed == 2)
   }
+
+  // M14: docs/04 §Testing — MiniMax wraps OpenAI chat-completions.
+  @Test func requestBodySerialization() async throws {
+    await MockRequestScript.shared.reset(host: miniMaxHost)
+    await MockRequestScript.shared.enqueue(
+      MockResponse(json: miniMaxFinalAnswerBody), host: miniMaxHost)
+
+    let session = LanguageModelSession(
+      model: makeMiniMaxModel(),
+      tools: [MiniMaxEchoTool()]
+    )
+    _ = try await session.respond(to: "hello")
+
+    let request = try #require(
+      await MockRequestScript.shared.observedRequests(host: miniMaxHost).first)
+    #expect(request.url?.path == "/v1/chat/completions")
+    #expect(request.value(forHTTPHeaderField: "Authorization") == "Bearer test-key")
+    let bodyData = try #require(request.httpBody)
+    let body = try #require(
+      try JSONSerialization.jsonObject(with: bodyData) as? [String: Any])
+    #expect(body["model"] as? String == "MiniMax-Text-01")
+    let messages = try #require(body["messages"] as? [[String: Any]])
+    // MiniMax wraps OpenAILanguageModel via the `.blocks` content path.
+    #expect(messages.contains(where: userMessageContains("hello")))
+    let tools = try #require(body["tools"] as? [[String: Any]])
+    let fn = try #require(tools.first?["function"] as? [String: Any])
+    #expect(fn["name"] as? String == "miniMaxEcho")
+  }
 }
