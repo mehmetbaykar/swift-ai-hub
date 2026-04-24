@@ -65,9 +65,14 @@ actor MockRequestScript {
     consumed[host] ?? 0
   }
 
+  /// The URLRequests captured for a given host, in call order.
+  func observedRequests(host: String) -> [URLRequest] {
+    observed[host] ?? []
+  }
+
   func next(for request: URLRequest) throws -> MockResponse {
     let host = request.url?.host ?? ""
-    observed[host, default: []].append(request)
+    observed[host, default: []].append(normalizeBody(request))
     guard var queue = scripts[host], !queue.isEmpty else {
       throw NSError(
         domain: "MockURLProtocol",
@@ -129,6 +134,31 @@ final class MockURLProtocol: URLProtocol, @unchecked Sendable {
   override func stopLoading() {
     // No-op: nothing to tear down for synchronous scripted responses.
   }
+}
+
+/// Returns `request` unchanged, except that when `httpBody` is nil but a
+/// body stream is present the stream is drained into `httpBody`. `URLSession`
+/// often moves `httpBody` into `httpBodyStream` before a `URLProtocol`
+/// subclass sees the request, which would otherwise make body assertions in
+/// wire tests impossible.
+private func normalizeBody(_ request: URLRequest) -> URLRequest {
+  guard request.httpBody == nil, let stream = request.httpBodyStream else {
+    return request
+  }
+  var data = Data()
+  stream.open()
+  defer { stream.close() }
+  let bufferSize = 4096
+  let buffer = UnsafeMutablePointer<UInt8>.allocate(capacity: bufferSize)
+  defer { buffer.deallocate() }
+  while stream.hasBytesAvailable {
+    let read = stream.read(buffer, maxLength: bufferSize)
+    if read <= 0 { break }
+    data.append(buffer, count: read)
+  }
+  var copy = request
+  copy.httpBody = data
+  return copy
 }
 
 /// Builds a `URLSession` whose only registered protocol is `MockURLProtocol`.
