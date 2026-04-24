@@ -270,9 +270,35 @@ public final class LanguageModelSession: @unchecked Sendable {
       rawContent: GeneratedContent,
       transcriptEntries: ArraySlice<Transcript.Entry>
     ) {
+      self.init(
+        content: content,
+        rawContent: rawContent,
+        transcriptEntries: transcriptEntries,
+        usage: nil,
+        finishReason: nil
+      )
+    }
+
+    /// Creates a response value, optionally carrying provider-reported
+    /// token usage and finish reason.
+    /// - Parameters:
+    ///   - content: The decoded response content.
+    ///   - rawContent: The raw content produced by the model.
+    ///   - transcriptEntries: Transcript entries associated with the response.
+    ///   - usage: Token usage statistics, if reported by the provider.
+    ///   - finishReason: Reason generation terminated, if reported.
+    public init(
+      content: Content,
+      rawContent: GeneratedContent,
+      transcriptEntries: ArraySlice<Transcript.Entry>,
+      usage: Usage?,
+      finishReason: FinishReason?
+    ) {
       self.content = content
       self.rawContent = rawContent
       self.transcriptEntries = transcriptEntries
+      self.usage = usage
+      self.finishReason = finishReason
     }
   }
 
