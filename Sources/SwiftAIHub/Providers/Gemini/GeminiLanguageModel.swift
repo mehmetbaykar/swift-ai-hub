@@ -294,8 +294,10 @@ public struct GeminiLanguageModel: LanguageModel {
 
     // Multi-turn conversation loop for tool calling
     while true {
+      let split = transcript.toGeminiContentSplit()
       let params = try createGenerateContentParams(
-        contents: transcript.toGeminiContent(),
+        contents: split.contents,
+        systemInstruction: split.systemInstruction,
         tools: geminiTools,
         generating: type,
         options: options,
@@ -305,8 +307,7 @@ public struct GeminiLanguageModel: LanguageModel {
 
       let body = try JSONEncoder().encode(params)
 
-      let response: GeminiGenerateContentResponse = try await httpSession.fetch(
-        .post,
+      let response: GeminiGenerateContentResponse = try await fetchGeminiResponse(
         url: url,
         headers: headers,
         body: body
@@ -338,7 +339,9 @@ public struct GeminiLanguageModel: LanguageModel {
           return LanguageModelSession.Response(
             content: empty.content,
             rawContent: empty.rawContent,
-            transcriptEntries: ArraySlice(transcript)
+            transcriptEntries: ArraySlice(transcript),
+            usage: response.usage,
+            finishReason: response.finishReasonMapped
           )
         case .invocations(let invocations):
           if !invocations.isEmpty {
@@ -366,7 +369,9 @@ public struct GeminiLanguageModel: LanguageModel {
           return LanguageModelSession.Response(
             content: text as! Content,
             rawContent: GeneratedContent(text),
-            transcriptEntries: ArraySlice(transcript)
+            transcriptEntries: ArraySlice(transcript),
+            usage: response.usage,
+            finishReason: response.finishReasonMapped
           )
         }
 
@@ -375,7 +380,9 @@ public struct GeminiLanguageModel: LanguageModel {
         return LanguageModelSession.Response(
           content: content,
           rawContent: generatedContent,
-          transcriptEntries: ArraySlice(transcript)
+          transcriptEntries: ArraySlice(transcript),
+          usage: response.usage,
+          finishReason: response.finishReasonMapped
         )
       }
     }
@@ -411,59 +418,107 @@ public struct GeminiLanguageModel: LanguageModel {
 
             let geminiTools = try buildTools(from: session.tools, serverTools: effectiveServerTools)
 
-            let params = try createGenerateContentParams(
-              contents: session.transcript.toGeminiContent(),
-              tools: geminiTools,
-              generating: type,
-              options: options,
-              thinking: effectiveThinking,
-              jsonMode: effectiveJsonMode
-            )
-
-            let body = try JSONEncoder().encode(params)
-
-            let stream: AsyncThrowingStream<GeminiGenerateContentResponse, any Error> =
-              httpSession
-              .fetchEventStream(
-                .post,
-                url: url,
-                headers: headers,
-                body: body
-              )
-
+            var transcript = session.transcript
+            let maxRounds = session.maxToolCallRounds
+            var round = 0
             var accumulatedText = ""
 
-            for try await chunk in stream {
-              guard let candidate = chunk.candidates.first else { continue }
+            // Outer loop: each iteration opens a fresh streamGenerateContent
+            // request. When a streamed chunk includes a `functionCall` part we
+            // break out, dispatch the tools via the session's tool-call
+            // machinery, append the result to the transcript, and re-enter.
+            streaming: while true {
+              let split = transcript.toGeminiContentSplit()
+              let params = try createGenerateContentParams(
+                contents: split.contents,
+                systemInstruction: split.systemInstruction,
+                tools: geminiTools,
+                generating: type,
+                options: options,
+                thinking: effectiveThinking,
+                jsonMode: effectiveJsonMode
+              )
 
-              if let parts = candidate.content.parts {
-                for part in parts {
-                  if case .text(let textPart) = part {
-                    accumulatedText += textPart.text
+              let body = try JSONEncoder().encode(params)
 
-                    var raw: GeneratedContent
-                    let content: Content.PartiallyGenerated?
+              let sseStream: AsyncThrowingStream<GeminiGenerateContentResponse, any Error> =
+                httpSession
+                .fetchEventStream(
+                  .post,
+                  url: url,
+                  headers: headers,
+                  body: body
+                )
 
-                    if type == String.self {
-                      raw = GeneratedContent(accumulatedText)
-                      content = (accumulatedText as! Content).asPartiallyGenerated()
-                    } else {
-                      raw =
-                        (try? GeneratedContent(json: accumulatedText))
-                        ?? GeneratedContent(accumulatedText)
-                      if let parsed = try? type.init(raw) {
-                        content = parsed.asPartiallyGenerated()
+              var pendingFunctionCalls: [GeminiFunctionCall] = []
+
+              for try await chunk in sseStream {
+                guard let candidate = chunk.candidates.first else { continue }
+
+                if let parts = candidate.content.parts {
+                  for part in parts {
+                    switch part {
+                    case .text(let textPart):
+                      accumulatedText += textPart.text
+
+                      var raw: GeneratedContent
+                      let content: Content.PartiallyGenerated?
+
+                      if type == String.self {
+                        raw = GeneratedContent(accumulatedText)
+                        content = (accumulatedText as! Content).asPartiallyGenerated()
                       } else {
-                        // Skip invalid partial JSON until it parses cleanly.
-                        content = nil
+                        raw =
+                          (try? GeneratedContent(json: accumulatedText))
+                          ?? GeneratedContent(accumulatedText)
+                        if let parsed = try? type.init(raw) {
+                          content = parsed.asPartiallyGenerated()
+                        } else {
+                          // Skip invalid partial JSON until it parses cleanly.
+                          content = nil
+                        }
                       }
-                    }
 
-                    if let content {
-                      continuation.yield(.init(content: content, rawContent: raw))
+                      if let content {
+                        continuation.yield(.init(content: content, rawContent: raw))
+                      }
+                    case .functionCall(let call):
+                      pendingFunctionCalls.append(call)
+                    default:
+                      continue
                     }
                   }
                 }
+              }
+
+              if pendingFunctionCalls.isEmpty {
+                break streaming
+              }
+
+              if round >= maxRounds {
+                throw LanguageModelSession.ToolCallLoopExceeded(rounds: round)
+              }
+              round += 1
+
+              let resolution = try await resolveFunctionCalls(
+                pendingFunctionCalls, session: session)
+              switch resolution {
+              case .stop(let calls):
+                if !calls.isEmpty {
+                  transcript.append(.toolCalls(Transcript.ToolCalls(calls)))
+                }
+                break streaming
+              case .invocations(let invocations):
+                if !invocations.isEmpty {
+                  transcript.append(.toolCalls(Transcript.ToolCalls(invocations.map(\.call))))
+                  for invocation in invocations {
+                    transcript.append(.toolOutput(invocation.output))
+                  }
+                }
+                // Re-enter the outer loop to open a fresh stream with the
+                // tool output posted back to Gemini.
+                accumulatedText = ""
+                continue streaming
               }
             }
 
@@ -484,6 +539,77 @@ public struct GeminiLanguageModel: LanguageModel {
     ]
 
     return headers
+  }
+
+  /// Issues a non-streaming generateContent POST and decodes the response.
+  ///
+  /// Unlike `httpSession.fetch`, this path inspects the raw HTTPURLResponse so
+  /// a 429 can be converted into a `LanguageModelSession.GenerationError.rateLimited`
+  /// carrying a `RateLimitInfo` parsed from the response headers. Other non-2xx
+  /// statuses fall through to the existing `URLSessionError.httpError` surface
+  /// for backward compatibility.
+  fileprivate func fetchGeminiResponse(
+    url: URL,
+    headers: [String: String],
+    body: Data
+  ) async throws -> GeminiGenerateContentResponse {
+    var request = URLRequest(url: url)
+    request.httpMethod = "POST"
+    request.addValue("application/json", forHTTPHeaderField: "Accept")
+    request.addValue("application/json", forHTTPHeaderField: "Content-Type")
+    for (key, value) in headers {
+      request.addValue(value, forHTTPHeaderField: key)
+    }
+    request.httpBody = body
+
+    #if canImport(FoundationNetworking)
+      var lockedData: Data?
+      var lockedResponse: URLResponse?
+      try await withLinuxRequestLock {
+        let (data, response) = try await httpSession.data(for: request)
+        lockedData = data
+        lockedResponse = response
+      }
+      guard let data = lockedData, let response = lockedResponse else {
+        throw URLSessionError.invalidResponse
+      }
+    #else
+      let (data, response) = try await httpSession.data(for: request)
+    #endif
+
+    guard let httpResponse = response as? HTTPURLResponse else {
+      throw URLSessionError.invalidResponse
+    }
+
+    if httpResponse.statusCode == 429 {
+      let headerDict = httpResponse.allHeaderFields.reduce(into: [String: String]()) {
+        result, pair in
+        if let key = pair.key as? String, let value = pair.value as? String {
+          result[key] = value
+        }
+      }
+      let detail = String(data: data, encoding: .utf8) ?? ""
+      throw LanguageModelSession.GenerationError.rateLimited(
+        .init(
+          debugDescription: redactSensitiveHeaders(detail),
+          rateLimit: RateLimitInfo.from(headers: headerDict)
+        )
+      )
+    }
+
+    guard (200..<300).contains(httpResponse.statusCode) else {
+      let detail = String(data: data, encoding: .utf8) ?? "Invalid response"
+      throw URLSessionError.httpError(
+        statusCode: httpResponse.statusCode,
+        detail: redactSensitiveHeaders(detail)
+      )
+    }
+
+    do {
+      return try JSONDecoder().decode(GeminiGenerateContentResponse.self, from: data)
+    } catch {
+      throw URLSessionError.decodingError(detail: error.localizedDescription)
+    }
   }
 
   private func buildTools(from tools: [any Tool], serverTools: [CustomGenerationOptions.ServerTool])
@@ -531,6 +657,7 @@ private func convertSchemaToGeminiFormat(_ schema: GenerationSchema) throws -> J
 
 private func createGenerateContentParams<Content: Generable>(
   contents: [GeminiContent],
+  systemInstruction: GeminiContent?,
   tools: [GeminiTool]?,
   generating type: Content.Type,
   options: GenerationOptions,
@@ -540,6 +667,10 @@ private func createGenerateContentParams<Content: Generable>(
   var params: [String: JSONValue] = [
     "contents": try JSONValue(contents)
   ]
+
+  if let systemInstruction {
+    params["systemInstruction"] = try JSONValue(systemInstruction)
+  }
 
   if let tools, !tools.isEmpty {
     params["tools"] = try .array(tools.map { try $0.jsonValue })
@@ -726,17 +857,31 @@ private func toJSONValue(_ toolOutput: Transcript.ToolOutput) throws -> [String:
 // MARK: - Supporting Types
 
 extension Transcript {
-  fileprivate func toGeminiContent() -> [GeminiContent] {
+  /// Splits the transcript into a top-level `systemInstruction` (when present)
+  /// and the remaining user/model/tool turns. Gemini's generateContent API
+  /// supports a first-class `systemInstruction` field, so instructions should
+  /// be emitted there rather than folded into the first user message.
+  ///
+  /// When the transcript contains no `.instructions` entry, `systemInstruction`
+  /// is `nil` and the contents are identical to the prior behavior (i.e. no
+  /// synthetic user turn is inserted).
+  fileprivate func toGeminiContentSplit() -> (
+    systemInstruction: GeminiContent?, contents: [GeminiContent]
+  ) {
+    var systemInstruction: GeminiContent?
     var messages = [GeminiContent]()
     for item in self {
       switch item {
       case .instructions(let instructions):
-        messages.append(
-          .init(
+        // Hoist instructions to the top-level systemInstruction field.
+        // Only the first instructions entry is honored; Gemini accepts a
+        // single systemInstruction per request.
+        if systemInstruction == nil {
+          systemInstruction = GeminiContent(
             role: .user,
             parts: convertSegmentsToGeminiParts(instructions.segments)
           )
-        )
+        }
       case .prompt(let prompt):
         messages.append(
           .init(
@@ -778,7 +923,7 @@ extension Transcript {
         )
       }
     }
-    return messages
+    return (systemInstruction, messages)
   }
 }
 
@@ -990,6 +1135,41 @@ private struct GeminiUsageMetadata: Codable, Sendable {
     case candidatesTokenCount
     case totalTokenCount
     case thoughtsTokenCount
+  }
+}
+
+extension GeminiGenerateContentResponse {
+  /// Hub-level `Usage` projected from Gemini's `usageMetadata`. Thoughts tokens
+  /// are folded into the completion total so callers see a single consistent
+  /// token count regardless of whether thinking mode was used.
+  fileprivate var usage: Usage? {
+    guard let metadata = usageMetadata else { return nil }
+    let completion: Int? = {
+      switch (metadata.candidatesTokenCount, metadata.thoughtsTokenCount) {
+      case (nil, nil): return nil
+      case (let c?, nil): return c
+      case (nil, let t?): return t
+      case (let c?, let t?): return c + t
+      }
+    }()
+    return Usage(
+      promptTokens: metadata.promptTokenCount,
+      completionTokens: completion,
+      totalTokens: metadata.totalTokenCount
+    )
+  }
+
+  /// Hub-level `FinishReason` mapped from the first candidate's `finishReason`.
+  fileprivate var finishReasonMapped: FinishReason? {
+    guard let raw = candidates.first?.finishReason else { return nil }
+    switch raw {
+    case "STOP": return .stop
+    case "MAX_TOKENS": return .length
+    case "SAFETY", "RECITATION": return .contentFilter
+    case "MALFORMED_FUNCTION_CALL", "TOOL_CODE": return .toolCalls
+    case "OTHER": return .other("OTHER")
+    default: return .other(raw)
+    }
   }
 }
 

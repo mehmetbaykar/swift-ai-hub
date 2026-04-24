@@ -143,4 +143,208 @@ struct GeminiWireTests {
     let consumed = await MockRequestScript.shared.consumedCount(host: geminiHost)
     #expect(consumed == 2)
   }
+
+  // I9b: instructions must be emitted as top-level `systemInstruction` rather
+  // than folded into the first user content turn.
+  @Test func systemInstructionEmittedAsTopLevelField() async throws {
+    await MockRequestScript.shared.reset(host: geminiHost)
+    await MockRequestScript.shared.enqueue(
+      MockResponse(json: geminiFinalAnswerBody), host: geminiHost)
+
+    let session = LanguageModelSession(
+      model: makeGeminiModel(),
+      instructions: "Always respond in haiku."
+    )
+    _ = try await session.respond(to: "hello")
+
+    let requests = await MockRequestScript.shared.observedRequests(host: geminiHost)
+    let request = try #require(requests.first)
+    let bodyData = try #require(request.httpBody)
+    let body = try #require(
+      try JSONSerialization.jsonObject(with: bodyData) as? [String: Any])
+
+    let systemInstruction = try #require(body["systemInstruction"] as? [String: Any])
+    let systemParts = try #require(systemInstruction["parts"] as? [[String: Any]])
+    let systemText = systemParts.compactMap { $0["text"] as? String }.joined()
+    #expect(systemText.contains("haiku"))
+
+    // The user turn should carry the prompt only — instructions must NOT be
+    // folded into it.
+    let contents = try #require(body["contents"] as? [[String: Any]])
+    let firstParts = try #require(contents.first?["parts"] as? [[String: Any]])
+    let userText = firstParts.compactMap { $0["text"] as? String }.joined()
+    #expect(userText.contains("hello"))
+    #expect(!userText.contains("haiku"))
+  }
+
+  // I9b backward compat: with no instructions, no systemInstruction field
+  // should be emitted.
+  @Test func systemInstructionOmittedWhenInstructionsNil() async throws {
+    await MockRequestScript.shared.reset(host: geminiHost)
+    await MockRequestScript.shared.enqueue(
+      MockResponse(json: geminiFinalAnswerBody), host: geminiHost)
+
+    let session = LanguageModelSession(model: makeGeminiModel())
+    _ = try await session.respond(to: "hello")
+
+    let requests = await MockRequestScript.shared.observedRequests(host: geminiHost)
+    let request = try #require(requests.first)
+    let bodyData = try #require(request.httpBody)
+    let body = try #require(
+      try JSONSerialization.jsonObject(with: bodyData) as? [String: Any])
+
+    #expect(body["systemInstruction"] == nil)
+  }
+
+  // W1: Response.usage should be populated from `usageMetadata` and
+  // finishReason should map STOP → .stop.
+  @Test func usageAndFinishReasonPopulated() async throws {
+    await MockRequestScript.shared.reset(host: geminiHost)
+    let bodyWithUsage = """
+      {
+        "candidates": [{
+          "content": {"role": "model", "parts": [{"text": "ok"}]},
+          "finishReason": "STOP"
+        }],
+        "usageMetadata": {
+          "promptTokenCount": 7,
+          "candidatesTokenCount": 3,
+          "totalTokenCount": 10,
+          "thoughtsTokenCount": 2
+        }
+      }
+      """
+    await MockRequestScript.shared.enqueue(
+      MockResponse(json: bodyWithUsage), host: geminiHost)
+
+    let session = LanguageModelSession(model: makeGeminiModel())
+    let response = try await session.respond(to: "hi")
+
+    let usage = try #require(response.usage)
+    #expect(usage.promptTokens == 7)
+    // thoughts (2) + candidates (3) = 5
+    #expect(usage.completionTokens == 5)
+    #expect(usage.totalTokens == 10)
+    #expect(response.finishReason == .stop)
+  }
+
+  // W1: finishReason mapping for MAX_TOKENS, SAFETY, MALFORMED_FUNCTION_CALL.
+  @Test func finishReasonMapping() async throws {
+    let cases: [(raw: String, expected: FinishReason)] = [
+      ("MAX_TOKENS", .length),
+      ("SAFETY", .contentFilter),
+      ("RECITATION", .contentFilter),
+      ("MALFORMED_FUNCTION_CALL", .toolCalls),
+      ("TOOL_CODE", .toolCalls),
+      ("OTHER", .other("OTHER")),
+      ("UNKNOWN_REASON", .other("UNKNOWN_REASON")),
+    ]
+
+    for (raw, expected) in cases {
+      await MockRequestScript.shared.reset(host: geminiHost)
+      let body = """
+        {"candidates": [{
+          "content": {"role": "model", "parts": [{"text": "x"}]},
+          "finishReason": "\(raw)"
+        }]}
+        """
+      await MockRequestScript.shared.enqueue(
+        MockResponse(json: body), host: geminiHost)
+
+      let session = LanguageModelSession(model: makeGeminiModel())
+      let response = try await session.respond(to: "hi")
+      #expect(response.finishReason == expected, "raw=\(raw)")
+    }
+  }
+
+  // W5: a 429 response should throw `.rateLimited` with `RateLimitInfo`
+  // parsed from the response headers.
+  @Test func rateLimit429AttachesRateLimitInfo() async throws {
+    await MockRequestScript.shared.reset(host: geminiHost)
+    await MockRequestScript.shared.enqueue(
+      MockResponse(
+        statusCode: 429,
+        headers: [
+          "Content-Type": "application/json",
+          "retry-after": "12",
+          "x-ratelimit-limit-requests": "100",
+          "x-ratelimit-remaining-requests": "0",
+        ],
+        body: Data(#"{"error":"rate limited"}"#.utf8)
+      ),
+      host: geminiHost
+    )
+
+    let session = LanguageModelSession(model: makeGeminiModel())
+    do {
+      _ = try await session.respond(to: "hi")
+      Issue.record("expected throw")
+    } catch let error as LanguageModelSession.GenerationError {
+      guard case .rateLimited(let ctx) = error else {
+        Issue.record("unexpected error: \(error)")
+        return
+      }
+      let info = try #require(ctx.rateLimit)
+      #expect(info.retryAfter == 12)
+      #expect(info.limitRequests == 100)
+      #expect(info.remainingRequests == 0)
+    }
+  }
+
+  // I8b: a streamed functionCall part should trigger the tool-call loop and a
+  // fresh stream with the functionResponse posted back.
+  @Test func streamToolLoopRoundTrip() async throws {
+    await MockRequestScript.shared.reset(host: geminiHost)
+    // SSE events must carry a single-line JSON payload — EventSource parses each
+    // `\n`-separated line as its own field, so multi-line JSON breaks the event.
+    let functionCallJSON =
+      #"{"candidates":[{"content":{"role":"model","parts":[{"functionCall":{"name":"geminiEcho","args":{"text":"hi"}}}]},"finishReason":"STOP"}]}"#
+    let finalAnswerJSON =
+      #"{"candidates":[{"content":{"role":"model","parts":[{"text":"final answer"}]},"finishReason":"STOP"}]}"#
+    let sseFunctionCall = "data: \(functionCallJSON)\n\n"
+    let sseFinalAnswer = "data: \(finalAnswerJSON)\n\n"
+    await MockRequestScript.shared.enqueue(
+      [
+        MockResponse(
+          statusCode: 200,
+          headers: ["Content-Type": "text/event-stream"],
+          body: Data(sseFunctionCall.utf8)
+        ),
+        MockResponse(
+          statusCode: 200,
+          headers: ["Content-Type": "text/event-stream"],
+          body: Data(sseFinalAnswer.utf8)
+        ),
+      ],
+      host: geminiHost
+    )
+
+    let session = LanguageModelSession(
+      model: makeGeminiModel(),
+      tools: [GeminiEchoTool()]
+    )
+    let stream = session.streamResponse(to: "please echo", generating: String.self)
+
+    var lastContent = ""
+    for try await snapshot in stream {
+      lastContent = String(snapshot.content.description)
+    }
+
+    #expect(lastContent.contains("final answer"))
+    let consumed = await MockRequestScript.shared.consumedCount(host: geminiHost)
+    #expect(consumed == 2)
+
+    // Second request must carry the functionResponse turn posted back to Gemini.
+    let requests = await MockRequestScript.shared.observedRequests(host: geminiHost)
+    #expect(requests.count == 2)
+    let secondBody = try #require(
+      try JSONSerialization.jsonObject(with: requests[1].httpBody ?? Data())
+        as? [String: Any])
+    let secondContents = try #require(secondBody["contents"] as? [[String: Any]])
+    let haveFunctionResponse = secondContents.contains { entry in
+      let parts = entry["parts"] as? [[String: Any]] ?? []
+      return parts.contains { $0["functionResponse"] != nil }
+    }
+    #expect(haveFunctionResponse)
+  }
 }
