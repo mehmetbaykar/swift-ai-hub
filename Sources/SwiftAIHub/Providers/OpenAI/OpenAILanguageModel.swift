@@ -478,6 +478,8 @@ public struct OpenAILanguageModel: LanguageModel {
     var messages = messages
     let maxRounds = session.maxToolCallRounds
     var round = 0
+    var lastUsage: Usage?
+    var lastFinishReason: FinishReason?
 
     // Loop until no more tool calls
     while true {
@@ -492,18 +494,26 @@ public struct OpenAILanguageModel: LanguageModel {
 
       let url = baseURL.appendingPathComponent("chat/completions")
       let body = try JSONEncoder().encode(params)
-      let resp: ChatCompletions.Response = try await httpSession.fetch(
-        .post,
-        url: url,
-        headers: [
-          "Authorization": "Bearer \(tokenProvider())"
-        ],
-        body: body
-      )
+      let resp: ChatCompletions.Response
+      do {
+        resp = try await httpSession.fetch(
+          .post,
+          url: url,
+          headers: [
+            "Authorization": "Bearer \(tokenProvider())"
+          ],
+          body: body
+        )
+      } catch {
+        try rethrowMappingRateLimit(error)
+      }
 
       guard let choice = resp.choices.first else {
         throw OpenAILanguageModelError.noResponseGenerated
       }
+
+      lastUsage = resp.usage?.hubUsage
+      lastFinishReason = mapOpenAIFinishReason(choice.finishReason)
 
       if let refusalMessage = choice.message.refusal {
         let refusalEntry = Transcript.Entry.response(
@@ -564,7 +574,9 @@ public struct OpenAILanguageModel: LanguageModel {
       return LanguageModelSession.Response(
         content: text as! Content,
         rawContent: GeneratedContent(text),
-        transcriptEntries: ArraySlice(entries)
+        transcriptEntries: ArraySlice(entries),
+        usage: lastUsage,
+        finishReason: lastFinishReason
       )
     }
 
@@ -573,7 +585,9 @@ public struct OpenAILanguageModel: LanguageModel {
     return LanguageModelSession.Response(
       content: content,
       rawContent: generatedContent,
-      transcriptEntries: ArraySlice(entries)
+      transcriptEntries: ArraySlice(entries),
+      usage: lastUsage,
+      finishReason: lastFinishReason
     )
   }
 
@@ -590,6 +604,8 @@ public struct OpenAILanguageModel: LanguageModel {
     var messages = messages
     let maxRounds = session.maxToolCallRounds
     var round = 0
+    var lastUsage: Usage?
+    var lastFinishReason: FinishReason?
 
     let url = baseURL.appendingPathComponent("responses")
 
@@ -606,14 +622,22 @@ public struct OpenAILanguageModel: LanguageModel {
 
       let encoder = JSONEncoder()
       let body = try encoder.encode(params)
-      let resp: Responses.Response = try await httpSession.fetch(
-        .post,
-        url: url,
-        headers: [
-          "Authorization": "Bearer \(tokenProvider())"
-        ],
-        body: body
-      )
+      let resp: Responses.Response
+      do {
+        resp = try await httpSession.fetch(
+          .post,
+          url: url,
+          headers: [
+            "Authorization": "Bearer \(tokenProvider())"
+          ],
+          body: body
+        )
+      } catch {
+        try rethrowMappingRateLimit(error)
+      }
+
+      lastUsage = resp.usage?.hubUsage
+      lastFinishReason = mapOpenAIFinishReason(resp.finishReason)
 
       let toolCalls = extractToolCallsFromOutput(resp.output)
       lastOutput = resp.output
@@ -667,7 +691,9 @@ public struct OpenAILanguageModel: LanguageModel {
       return LanguageModelSession.Response(
         content: text as! Content,
         rawContent: GeneratedContent(text),
-        transcriptEntries: ArraySlice(entries)
+        transcriptEntries: ArraySlice(entries),
+        usage: lastUsage,
+        finishReason: lastFinishReason
       )
     }
 
@@ -677,7 +703,9 @@ public struct OpenAILanguageModel: LanguageModel {
       return LanguageModelSession.Response(
         content: content,
         rawContent: generatedContent,
-        transcriptEntries: ArraySlice(entries)
+        transcriptEntries: ArraySlice(entries),
+        usage: lastUsage,
+        finishReason: lastFinishReason
       )
     }
     throw OpenAILanguageModelError.noResponseGenerated
@@ -995,6 +1023,7 @@ private enum ChatCompletions {
   struct Response: Decodable, Sendable {
     let id: String
     let choices: [Choice]
+    let usage: OpenAIUsage?
 
     struct Choice: Codable, Sendable {
       let message: Message
@@ -1249,6 +1278,7 @@ private enum Responses {
     let error: [JSONValue]?
     let outputText: String?
     let finishReason: String?
+    let usage: OpenAIUsage?
 
     private enum CodingKeys: String, CodingKey {
       case id
@@ -1256,8 +1286,45 @@ private enum Responses {
       case outputText = "output_text"
       case finishReason = "finish_reason"
       case error = "error"
+      case usage
     }
   }
+}
+
+// OpenAI returns usage in both Chat Completions and Responses shapes using
+// the same `{prompt_tokens, completion_tokens, total_tokens}` triple (the
+// Responses API additionally ships `input_tokens`/`output_tokens` aliases
+// — we map both onto our provider-neutral `Usage` type).
+private struct OpenAIUsage: Decodable, Sendable {
+  let promptTokens: Int?
+  let completionTokens: Int?
+  let totalTokens: Int?
+  let inputTokens: Int?
+  let outputTokens: Int?
+
+  private enum CodingKeys: String, CodingKey {
+    case promptTokens = "prompt_tokens"
+    case completionTokens = "completion_tokens"
+    case totalTokens = "total_tokens"
+    case inputTokens = "input_tokens"
+    case outputTokens = "output_tokens"
+  }
+
+  var hubUsage: Usage {
+    Usage(
+      promptTokens: promptTokens ?? inputTokens,
+      completionTokens: completionTokens ?? outputTokens,
+      totalTokens: totalTokens
+    )
+  }
+}
+
+/// Maps OpenAI's `finish_reason` strings (`"stop"`, `"length"`,
+/// `"tool_calls"`, `"content_filter"`) onto the hub ``FinishReason`` enum.
+/// Unknown values round-trip through ``FinishReason/other(_:)``.
+private func mapOpenAIFinishReason(_ raw: String?) -> FinishReason? {
+  guard let raw else { return nil }
+  return FinishReason(rawValue: raw)
 }
 
 // MARK: - Supporting Types

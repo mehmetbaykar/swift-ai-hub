@@ -197,13 +197,15 @@ extension URLSession {
     decoder.dateDecodingStrategy = dateDecodingStrategy
 
     guard (200..<300).contains(httpResponse.statusCode) else {
+      let hdrs = headerDictionary(from: httpResponse)
       if let errorString = String(data: data, encoding: .utf8) {
         throw URLSessionError.httpError(
           statusCode: httpResponse.statusCode,
-          detail: redactSensitiveHeaders(errorString))
+          detail: redactSensitiveHeaders(errorString),
+          headers: hdrs)
       }
       throw URLSessionError.httpError(
-        statusCode: httpResponse.statusCode, detail: "Invalid response")
+        statusCode: httpResponse.statusCode, detail: "Invalid response", headers: hdrs)
     }
 
     do {
@@ -259,13 +261,15 @@ extension URLSession {
           }
 
           guard (200..<300).contains(httpResponse.statusCode) else {
+            let hdrs = headerDictionary(from: httpResponse)
             if let errorString = String(data: data, encoding: .utf8) {
               throw URLSessionError.httpError(
                 statusCode: httpResponse.statusCode,
-                detail: redactSensitiveHeaders(errorString))
+                detail: redactSensitiveHeaders(errorString),
+                headers: hdrs)
             }
             throw URLSessionError.httpError(
-              statusCode: httpResponse.statusCode, detail: "Invalid response")
+              statusCode: httpResponse.statusCode, detail: "Invalid response", headers: hdrs)
           }
 
           var buffer = data
@@ -357,13 +361,15 @@ extension URLSession {
       for try await byte in asyncBytes {
         errorData.append(byte)
       }
+      let hdrs = headerDictionary(from: httpResponse)
       if let errorString = String(data: errorData, encoding: .utf8) {
         throw URLSessionError.httpError(
           statusCode: httpResponse.statusCode,
-          detail: redactSensitiveHeaders(errorString))
+          detail: redactSensitiveHeaders(errorString),
+          headers: hdrs)
       }
       throw URLSessionError.httpError(
-        statusCode: httpResponse.statusCode, detail: "Invalid response")
+        statusCode: httpResponse.statusCode, detail: "Invalid response", headers: hdrs)
     }
   }
 
@@ -497,17 +503,31 @@ extension URLSession {
 
 enum URLSessionError: Error, CustomStringConvertible {
   case invalidResponse
-  case httpError(statusCode: Int, detail: String)
+  case httpError(statusCode: Int, detail: String, headers: [String: String] = [:])
   case decodingError(detail: String)
 
   var description: String {
     switch self {
     case .invalidResponse:
       return "Invalid response"
-    case .httpError(let statusCode, let detail):
+    case .httpError(let statusCode, let detail, _):
       return "HTTP error (Status \(statusCode)): \(detail)"
     case .decodingError(let detail):
       return "Decoding error: \(detail)"
     }
   }
+}
+
+/// Extract a `[String: String]` header dictionary from an `HTTPURLResponse`'s
+/// `allHeaderFields`. Non-string keys/values are skipped (Foundation types
+/// them as `AnyHashable`/`Any` on Apple platforms).
+func headerDictionary(from response: HTTPURLResponse) -> [String: String] {
+  var out: [String: String] = [:]
+  out.reserveCapacity(response.allHeaderFields.count)
+  for (key, value) in response.allHeaderFields {
+    if let k = key as? String, let v = value as? String {
+      out[k] = v
+    }
+  }
+  return out
 }
