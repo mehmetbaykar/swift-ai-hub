@@ -75,7 +75,10 @@ let package = Package(
           condition: .when(
             platforms: [.macOS, .iOS, .tvOS, .watchOS, .visionOS], traits: ["CoreML"])),
         .product(
-          name: "LlamaSwift", package: "llama.swift", condition: .when(traits: ["Llama"])),
+          name: "LlamaSwift", package: "llama.swift",
+          condition: .when(
+            platforms: [.macOS, .iOS, .tvOS, .watchOS, .visionOS],
+            traits: ["Llama"])),
         .product(
           name: "PartialJSONDecoder", package: "PartialJSONDecoder",
           condition: .when(
@@ -92,7 +95,9 @@ let package = Package(
         .define(
           "CoreML",
           .when(platforms: [.macOS, .iOS, .tvOS, .watchOS, .visionOS], traits: ["CoreML"])),
-        .define("Llama", .when(traits: ["Llama"])),
+        .define(
+          "Llama",
+          .when(platforms: [.macOS, .iOS, .tvOS, .watchOS, .visionOS], traits: ["Llama"])),
         .define(
           "FoundationModels",
           .when(
