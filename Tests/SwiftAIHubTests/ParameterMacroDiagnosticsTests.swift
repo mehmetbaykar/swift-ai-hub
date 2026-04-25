@@ -21,7 +21,7 @@
     ]
 
     private static let misplacedMessage =
-      "@Parameter must be declared on a stored property of a nested @Generable struct named Arguments inside a @Tool type. To carry dependencies, use a plain stored property without @Parameter."
+      "@Parameter must be declared on a stored property either (1) directly inside a @Tool type, or (2) inside a nested @Generable struct named Arguments inside a @Tool type. To carry dependencies, use a plain stored property without @Parameter."
 
     func testParameterAtFileScopeDiagnoses() {
       assertMacroExpansion(
@@ -121,6 +121,30 @@
               struct Arguments {
                   var message: String
               }
+          }
+          """,
+        diagnostics: [],
+        macros: testMacros
+      )
+    }
+
+    /// Flat-form acceptance: @Parameter declared directly on a stored
+    /// property of a @Tool struct must NOT diagnose. The @Tool macro is
+    /// responsible for synthesising the nested Arguments type from these
+    /// markers; the @Parameter macro itself remains a pure marker.
+    func testParameterDirectlyInsideToolProducesNoDiagnostic() {
+      assertMacroExpansion(
+        """
+        @Tool("desc")
+        struct MyTool {
+            @Parameter("ok")
+            var message: String
+        }
+        """,
+        expandedSource: """
+          @Tool("desc")
+          struct MyTool {
+              var message: String
           }
           """,
         diagnostics: [],

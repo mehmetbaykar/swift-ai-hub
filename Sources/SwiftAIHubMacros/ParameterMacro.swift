@@ -32,10 +32,12 @@ public struct ParameterMacro: PeerMacro {
     providingPeersOf declaration: some DeclSyntaxProtocol,
     in context: some MacroExpansionContext
   ) throws -> [DeclSyntax] {
-    // Diagnose misuse: @Parameter must live on a stored property inside a
-    // nested `@Generable struct Arguments` that itself lives inside a
-    // `@Tool` type. Anything else is a foot-gun — without this check the
-    // user gets confusing downstream type errors.
+    // Diagnose misuse: @Parameter must live on a stored property in one of
+    // two contexts — (a) a nested `@Generable struct Arguments` inside a
+    // `@Tool` type (the verbose, nested form) or (b) directly on a stored
+    // property of a `@Tool` struct (the flat form). Anything else is a
+    // foot-gun — without this check the user gets confusing downstream
+    // type errors.
     if !isValidParameterContext(in: context) {
       context.diagnose(
         Diagnostic(
@@ -50,24 +52,45 @@ public struct ParameterMacro: PeerMacro {
     return []
   }
 
-  /// Checks the enclosing lexical context: the immediate parent must be a
-  /// `struct Arguments` annotated with `@Generable`, and its parent must be
-  /// a type annotated with `@Tool`.
+  /// Checks the enclosing lexical context. Two valid placements:
+  ///
+  /// 1. **Nested form**: the immediate parent is a `struct Arguments`
+  ///    annotated with `@Generable`, and its parent is a type annotated
+  ///    with `@Tool`.
+  /// 2. **Flat form**: the immediate parent is a type annotated with
+  ///    `@Tool`.
   private static func isValidParameterContext(
     in context: some MacroExpansionContext
   ) -> Bool {
     let lexicalContext = context.lexicalContext
-    guard lexicalContext.count >= 2 else { return false }
+    guard !lexicalContext.isEmpty else { return false }
 
+    if isInsideArgumentsStructInsideTool(lexicalContext) { return true }
+    if isDirectlyInsideToolStruct(lexicalContext) { return true }
+    return false
+  }
+
+  private static func isInsideArgumentsStructInsideTool(
+    _ lexicalContext: [Syntax]
+  ) -> Bool {
+    guard lexicalContext.count >= 2 else { return false }
     guard let argumentsStruct = lexicalContext[0].as(StructDeclSyntax.self),
       argumentsStruct.name.text == "Arguments",
       hasAttribute(named: "Generable", on: argumentsStruct.attributes)
     else { return false }
 
     let outer = lexicalContext[1]
-    let outerAttributes = nominalAttributes(of: outer)
-    guard let outerAttributes else { return false }
+    guard let outerAttributes = nominalAttributes(of: outer) else { return false }
     return hasAttribute(named: "Tool", on: outerAttributes)
+  }
+
+  private static func isDirectlyInsideToolStruct(
+    _ lexicalContext: [Syntax]
+  ) -> Bool {
+    guard let parent = lexicalContext.first,
+      let parentAttributes = nominalAttributes(of: parent)
+    else { return false }
+    return hasAttribute(named: "Tool", on: parentAttributes)
   }
 
   /// Returns the `attributes` list of a nominal type declaration (struct,
@@ -114,7 +137,7 @@ enum ParameterDiagnostic: String, DiagnosticMessage {
     switch self {
     case .misplaced:
       return
-        "@Parameter must be declared on a stored property of a nested @Generable struct named Arguments inside a @Tool type. To carry dependencies, use a plain stored property without @Parameter."
+        "@Parameter must be declared on a stored property either (1) directly inside a @Tool type, or (2) inside a nested @Generable struct named Arguments inside a @Tool type. To carry dependencies, use a plain stored property without @Parameter."
     }
   }
 
