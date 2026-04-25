@@ -23,7 +23,16 @@ jobs:
     name: swift build + test (no traits)
     runs-on: macos-26
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
+      - name: Cache SPM
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/Library/Caches/org.swift.swiftpm
+            .build
+          key: ${{ runner.os }}-spm-no-traits-${{ hashFiles('Package.swift', 'Package.resolved') }}
+          restore-keys: |
+            ${{ runner.os }}-spm-no-traits-
       - run: swift --version
       - run: swift build
       - name: swift build (strict concurrency)
@@ -34,5 +43,14 @@ jobs:
     name: swift build (MLX, CoreML, Llama, FoundationModels)
     runs-on: macos-26
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
+      - name: Cache SPM
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/Library/Caches/org.swift.swiftpm
+            .build
+          key: ${{ runner.os }}-spm-all-traits-${{ hashFiles('Package.swift', 'Package.resolved') }}
+          restore-keys: |
+            ${{ runner.os }}-spm-all-traits-
       - run: swift build --traits MLX,CoreML,Llama,FoundationModels
