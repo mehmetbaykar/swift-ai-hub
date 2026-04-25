@@ -26,7 +26,7 @@ let package = Package(
         "Opt-in to AsyncHTTPClient-based transport; default is URLSession only. Off by default."),
   ],
   dependencies: [
-    .package(url: "https://github.com/swiftlang/swift-syntax.git", from: "600.0.0"),
+    .package(url: "https://github.com/swiftlang/swift-syntax.git", from: "603.0.1"),
     .package(url: "https://github.com/apple/swift-log.git", from: "1.5.0"),
     .package(url: "https://github.com/apple/swift-collections.git", from: "1.1.0"),
     .package(url: "https://github.com/mattt/JSONSchema.git", from: "1.3.0"),
