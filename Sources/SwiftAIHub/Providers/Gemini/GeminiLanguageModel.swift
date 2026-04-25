@@ -422,6 +422,7 @@ public struct GeminiLanguageModel: LanguageModel {
             let maxRounds = session.maxToolCallRounds
             var round = 0
             var accumulatedText = ""
+            var accumulatedThinking = ""
 
             // Outer loop: each iteration opens a fresh streamGenerateContent
             // request. When a streamed chunk includes a `functionCall` part we
@@ -459,7 +460,11 @@ public struct GeminiLanguageModel: LanguageModel {
                   for part in parts {
                     switch part {
                     case .text(let textPart):
-                      accumulatedText += textPart.text
+                      if textPart.thought {
+                        accumulatedThinking += textPart.text
+                      } else {
+                        accumulatedText += textPart.text
+                      }
 
                       var raw: GeneratedContent
                       let content: Content.PartiallyGenerated?
@@ -480,7 +485,9 @@ public struct GeminiLanguageModel: LanguageModel {
                       }
 
                       if let content {
-                        continuation.yield(.init(content: content, rawContent: raw))
+                        continuation.yield(
+                          .init(
+                            content: content, rawContent: raw, thinking: accumulatedThinking))
                       }
                     case .functionCall(let call):
                       pendingFunctionCalls.append(call)
@@ -518,6 +525,7 @@ public struct GeminiLanguageModel: LanguageModel {
                 // Re-enter the outer loop to open a fresh stream with the
                 // tool output posted back to Gemini.
                 accumulatedText = ""
+                accumulatedThinking = ""
                 continue streaming
               }
             }
@@ -950,6 +958,7 @@ private enum GeminiPart: Codable, Sendable {
 
   enum CodingKeys: String, CodingKey {
     case text
+    case thought
     case functionCall
     case functionResponse
     case thoughtSignature
@@ -962,7 +971,8 @@ private enum GeminiPart: Codable, Sendable {
 
     if container.contains(.text) {
       let text = try container.decode(String.self, forKey: .text)
-      self = .text(GeminiTextPart(text: text))
+      let thought = try container.decodeIfPresent(Bool.self, forKey: .thought) ?? false
+      self = .text(GeminiTextPart(text: text, thought: thought))
     } else if container.contains(.functionCall) {
       // Note: thoughtSignature may be present but is ignored
       self = .functionCall(try container.decode(GeminiFunctionCall.self, forKey: .functionCall))
@@ -1002,6 +1012,14 @@ private enum GeminiPart: Codable, Sendable {
 
 private struct GeminiTextPart: Codable, Sendable {
   let text: String
+  /// `true` when this text part carries a "thought" — Gemini Thinking models
+  /// (2.5 Pro Thinking, etc.) flag chain-of-thought parts with `thought: true`.
+  let thought: Bool
+
+  init(text: String, thought: Bool = false) {
+    self.text = text
+    self.thought = thought
+  }
 }
 
 private struct GeminiInlineData: Codable, Sendable {

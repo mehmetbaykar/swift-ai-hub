@@ -447,6 +447,7 @@ public struct OpenResponsesLanguageModel: LanguageModel {
                   body: body
                 )
               var accumulatedText = ""
+              var accumulatedThinking = ""
               for try await event in events {
                 switch event {
                 case .outputTextDelta(let delta):
@@ -463,7 +464,25 @@ public struct OpenResponsesLanguageModel: LanguageModel {
                     content = (try? type.init(raw))?.asPartiallyGenerated()
                   }
                   if let content {
-                    continuation.yield(.init(content: content, rawContent: raw))
+                    continuation.yield(
+                      .init(content: content, rawContent: raw, thinking: accumulatedThinking))
+                  }
+                case .reasoningDelta(let delta):
+                  accumulatedThinking += delta
+                  let raw: GeneratedContent
+                  let content: Content.PartiallyGenerated?
+                  if type == String.self {
+                    raw = GeneratedContent(accumulatedText)
+                    content = (accumulatedText as! Content).asPartiallyGenerated()
+                  } else {
+                    raw =
+                      (try? GeneratedContent(json: accumulatedText))
+                      ?? GeneratedContent(accumulatedText)
+                    content = (try? type.init(raw))?.asPartiallyGenerated()
+                  }
+                  if let content {
+                    continuation.yield(
+                      .init(content: content, rawContent: raw, thinking: accumulatedThinking))
                   }
                 case .completed:
                   continuation.finish()
@@ -1160,6 +1179,7 @@ private func resolveToolCalls(
 
 private enum OpenResponsesStreamEvent: Decodable, Sendable {
   case outputTextDelta(String)
+  case reasoningDelta(String)
   case completed
   case failed
   case ignored
@@ -1170,6 +1190,8 @@ private enum OpenResponsesStreamEvent: Decodable, Sendable {
     switch type {
     case "response.output_text.delta":
       self = .outputTextDelta(try c.decode(String.self, forKey: .delta))
+    case "response.reasoning.delta", "response.reasoning_summary.delta":
+      self = .reasoningDelta(try c.decode(String.self, forKey: .delta))
     case "response.completed":
       self = .completed
     case "response.failed":
