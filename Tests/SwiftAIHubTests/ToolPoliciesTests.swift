@@ -206,10 +206,11 @@ private func call(_ name: String) -> Transcript.ToolCall {
 // MARK: - Parallel dispatch
 
 @Test func `tool calls dispatch concurrently`() async throws {
+  let toolDelay: TimeInterval = 0.5
   let counter = AttemptCounter()
-  let t1 = SlowTool(name: "s1", delay: 0.5, counter: counter)
-  let t2 = SlowTool(name: "s2", delay: 0.5, counter: counter)
-  let t3 = SlowTool(name: "s3", delay: 0.5, counter: counter)
+  let t1 = SlowTool(name: "s1", delay: toolDelay, counter: counter)
+  let t2 = SlowTool(name: "s2", delay: toolDelay, counter: counter)
+  let t3 = SlowTool(name: "s3", delay: toolDelay, counter: counter)
   let session = makeSession(tools: [t1, t2, t3])
 
   let calls = [call("s1"), call("s2"), call("s3")]
@@ -223,9 +224,10 @@ private func call(_ name: String) -> Transcript.ToolCall {
   )
   let elapsed = Date().timeIntervalSince(start)
 
-  // Serial would be ~1.5s; concurrent should finish near 0.5s + overhead.
-  // 1.0s threshold keeps margin for slow CI runners while still failing serial.
-  #expect(elapsed < 1.0)
+  // Self-relative: concurrent must be < 80% of serial. Robust to runner
+  // speed; only fails if dispatch silently regresses to serial.
+  let serialEstimate = toolDelay * Double(calls.count)
+  #expect(elapsed < serialEstimate * 0.8)
   #expect(outputs.count == 3)
   #expect(await counter.count == 3)
   // Output order preserved from input order.
