@@ -211,6 +211,13 @@ public struct OllamaLanguageModel: LanguageModel {
               let maxRounds = session.maxToolCallRounds
               var round = 0
               var partialText = ""
+              var accumulatedThinking = ""
+              // Splitter is reset every round so a new request starts clean;
+              // it handles models that embed <think>...</think> inline (older
+              // Ollama / unsupported think-flag models). Recent Ollama with
+              // `think: true` instead populates message.thinking directly,
+              // which we accumulate alongside.
+              var splitter = ReasoningTagSplitter()
 
               roundLoop: while true {
                 let params = try createChatParams(
@@ -236,13 +243,25 @@ public struct OllamaLanguageModel: LanguageModel {
                 var assistantTextThisRound = ""
 
                 for try await chunk in chunks {
+                  if let nativeThinking = chunk.message.thinking, !nativeThinking.isEmpty {
+                    accumulatedThinking += nativeThinking
+                  }
+
                   if let piece = chunk.message.content {
-                    partialText += piece
-                    assistantTextThisRound += piece
+                    let split = splitter.ingest(piece)
+                    if !split.thinkingDelta.isEmpty {
+                      accumulatedThinking += split.thinkingDelta
+                    }
+                    if !split.visibleDelta.isEmpty {
+                      partialText += split.visibleDelta
+                      assistantTextThisRound += split.visibleDelta
+                    }
+
                     if type == String.self {
                       let snapshot = LanguageModelSession.ResponseStream<Content>.Snapshot(
                         content: (partialText as! Content).asPartiallyGenerated(),
-                        rawContent: GeneratedContent(partialText)
+                        rawContent: GeneratedContent(partialText),
+                        thinking: accumulatedThinking
                       )
                       continuation.yield(snapshot)
                     } else if let raw = try? GeneratedContent(json: partialText),
@@ -250,7 +269,8 @@ public struct OllamaLanguageModel: LanguageModel {
                     {
                       let snapshot = LanguageModelSession.ResponseStream<Content>.Snapshot(
                         content: parsed.asPartiallyGenerated(),
-                        rawContent: raw
+                        rawContent: raw,
+                        thinking: accumulatedThinking
                       )
                       continuation.yield(snapshot)
                     } else {
@@ -291,6 +311,8 @@ public struct OllamaLanguageModel: LanguageModel {
                     messages.append(OllamaMessage(role: .tool, content: resultText))
                   }
                   partialText = ""
+                  accumulatedThinking = ""
+                  splitter = ReasoningTagSplitter()
                   continue roundLoop
                 }
               }
@@ -581,11 +603,13 @@ private struct ChatResponse: Decodable, Sendable {
 private struct ChatMessageResponse: Decodable, Sendable {
   let role: OllamaMessage.Role
   let content: String?
+  let thinking: String?
   let toolCalls: [OllamaToolCall]?
 
   private enum CodingKeys: String, CodingKey {
     case role
     case content
+    case thinking
     case toolCalls = "tool_calls"
   }
 }

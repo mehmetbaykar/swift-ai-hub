@@ -1114,8 +1114,13 @@ import Foundation
                 var round = 0
                 var previousToolCallSignature: String?
                 var accumulatedText = ""
+                var accumulatedThinking = ""
 
                 roundLoop: while true {
+                  // Splitter is reset every round so a model that emits a
+                  // fresh <think> block at the start of round 2 does not
+                  // inherit unclosed state from round 1.
+                  var splitter = ReasoningTagSplitter()
                   let userInput = makeUserInput(
                     chat: chat,
                     tools: toolSpecs,
@@ -1144,12 +1149,19 @@ import Foundation
 
                     switch item {
                     case .chunk(let text):
-                      accumulatedText += text
-                      assistantTextThisRound += text
+                      let split = splitter.ingest(text)
+                      if !split.thinkingDelta.isEmpty {
+                        accumulatedThinking += split.thinkingDelta
+                      }
+                      if !split.visibleDelta.isEmpty {
+                        accumulatedText += split.visibleDelta
+                        assistantTextThisRound += split.visibleDelta
+                      }
                       let raw = GeneratedContent(accumulatedText)
                       let content: Content.PartiallyGenerated = (accumulatedText as! Content)
                         .asPartiallyGenerated()
-                      continuation.yield(.init(content: content, rawContent: raw))
+                      continuation.yield(
+                        .init(content: content, rawContent: raw, thinking: accumulatedThinking))
                     case .toolCall(let call):
                       collectedToolCalls.append(call)
                     case .info:

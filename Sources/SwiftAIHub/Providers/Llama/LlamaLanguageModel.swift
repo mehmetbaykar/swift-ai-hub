@@ -618,6 +618,8 @@ import Foundation
                 llama_set_n_threads(context, runtimeOptions.threads, runtimeOptions.threads)
 
                 var accumulatedText = ""
+                var accumulatedThinking = ""
+                var splitter = ReasoningTagSplitter()
                 let fullPrompt = try self.formatPrompt(for: session)
 
                 do {
@@ -628,11 +630,18 @@ import Foundation
                     maxTokens: maxTokens,
                     options: runtimeOptions
                   ) {
-                    accumulatedText += tokenText
+                    let split = splitter.ingest(tokenText)
+                    if !split.thinkingDelta.isEmpty {
+                      accumulatedThinking += split.thinkingDelta
+                    }
+                    if !split.visibleDelta.isEmpty {
+                      accumulatedText += split.visibleDelta
+                    }
 
                     let snapshot = LanguageModelSession.ResponseStream<Content>.Snapshot(
                       content: (accumulatedText as! Content).asPartiallyGenerated(),
-                      rawContent: GeneratedContent(accumulatedText)
+                      rawContent: GeneratedContent(accumulatedText),
+                      thinking: accumulatedThinking
                     )
                     continuation.yield(snapshot)
                   }

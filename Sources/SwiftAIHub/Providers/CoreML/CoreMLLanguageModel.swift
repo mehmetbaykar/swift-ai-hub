@@ -204,7 +204,10 @@
                 await model.resetState()
 
                 let promptTokenCount = tokens.count
-                var accumulatedText = ""
+                var rawAssistantText = ""
+                var visibleText = ""
+                var accumulatedThinking = ""
+                var splitter = ReasoningTagSplitter()
 
                 _ = await model.generate(
                   config: generationConfig,
@@ -219,24 +222,42 @@
                   }
                   let assistantText = tokenizer.decode(tokens: Array(assistantTokenSlice))
 
-                  // Compute delta vs accumulated text and yield
-                  if assistantText.count >= accumulatedText.count,
-                    assistantText.hasPrefix(accumulatedText)
+                  // Tokenizer.decode returns the full assistant text rebuilt
+                  // every step, not a delta. Compute the new fragment vs the
+                  // previously seen raw text, then route it through the
+                  // <think>-tag splitter to separate thinking from visible.
+                  let fragment: String
+                  if assistantText.count >= rawAssistantText.count,
+                    assistantText.hasPrefix(rawAssistantText)
                   {
                     let startIdx = assistantText.index(
                       assistantText.startIndex,
-                      offsetBy: accumulatedText.count
+                      offsetBy: rawAssistantText.count
                     )
-                    let delta = String(assistantText[startIdx...])
-                    accumulatedText += delta
+                    fragment = String(assistantText[startIdx...])
                   } else {
-                    accumulatedText = assistantText
+                    // Tokenizer emitted text that doesn't extend the previous
+                    // — replay everything through a fresh splitter.
+                    splitter = ReasoningTagSplitter()
+                    visibleText = ""
+                    accumulatedThinking = ""
+                    fragment = assistantText
+                  }
+                  rawAssistantText = assistantText
+
+                  let split = splitter.ingest(fragment)
+                  if !split.thinkingDelta.isEmpty {
+                    accumulatedThinking += split.thinkingDelta
+                  }
+                  if !split.visibleDelta.isEmpty {
+                    visibleText += split.visibleDelta
                   }
 
                   continuation.yield(
                     .init(
-                      content: (accumulatedText as! Content).asPartiallyGenerated(),
-                      rawContent: GeneratedContent(accumulatedText)
+                      content: (visibleText as! Content).asPartiallyGenerated(),
+                      rawContent: GeneratedContent(visibleText),
+                      thinking: accumulatedThinking
                     )
                   )
                 }
