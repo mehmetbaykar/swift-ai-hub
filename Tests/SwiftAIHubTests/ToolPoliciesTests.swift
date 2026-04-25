@@ -51,19 +51,63 @@ private struct AlwaysFailTool: Tool {
   }
 }
 
-private struct SlowTool: Tool {
+private struct ToolExecutionInterval: Sendable {
+  let toolName: String
+  let startTime: ContinuousClock.Instant
+  let endTime: ContinuousClock.Instant
+}
+
+// Tool is Sendable and task-group execution crosses concurrency domains; keep
+// mutable timing state actor-isolated so strict concurrency can prove safety.
+private actor ToolExecutionRecorder {
+  private var startTimes: [String: ContinuousClock.Instant] = [:]
+  private var intervals: [ToolExecutionInterval] = []
+
+  func recordStart(toolName: String, startTime: ContinuousClock.Instant) {
+    startTimes[toolName] = startTime
+  }
+
+  func recordEnd(toolName: String, endTime: ContinuousClock.Instant) {
+    guard let startTime = startTimes[toolName] else { return }
+    intervals.append(
+      ToolExecutionInterval(toolName: toolName, startTime: startTime, endTime: endTime)
+    )
+  }
+
+  func recordedIntervals() -> [ToolExecutionInterval] {
+    intervals
+  }
+}
+
+private struct RecordingTool: Tool {
   typealias Arguments = EmptyArgs
   typealias Output = String
+
   let name: String
-  let description = "Sleeps then returns."
-  let delay: TimeInterval
-  let counter: AttemptCounter
+  let description = "Records execution interval."
+  let recorder: ToolExecutionRecorder
 
   func call(arguments: EmptyArgs) async throws -> String {
-    await counter.bump()
-    try await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000))
+    let startTime = ContinuousClock.Instant.now
+    await recorder.recordStart(toolName: name, startTime: startTime)
+    try await Task.sleep(nanoseconds: 300_000_000)
+    let endTime = ContinuousClock.Instant.now
+    await recorder.recordEnd(toolName: name, endTime: endTime)
     return name
   }
+}
+
+private func hasOverlappingIntervals(_ intervals: [ToolExecutionInterval]) -> Bool {
+  for firstIndex in intervals.indices {
+    for secondIndex in intervals.indices where firstIndex != secondIndex {
+      let first = intervals[firstIndex]
+      let second = intervals[secondIndex]
+      if first.startTime < second.endTime, second.startTime < first.endTime {
+        return true
+      }
+    }
+  }
+  return false
 }
 
 // Minimal language model that returns whatever it is told to return,
@@ -206,30 +250,25 @@ private func call(_ name: String) -> Transcript.ToolCall {
 // MARK: - Parallel dispatch
 
 @Test func `tool calls dispatch concurrently`() async throws {
-  let toolDelay: TimeInterval = 0.5
-  let counter = AttemptCounter()
-  let t1 = SlowTool(name: "s1", delay: toolDelay, counter: counter)
-  let t2 = SlowTool(name: "s2", delay: toolDelay, counter: counter)
-  let t3 = SlowTool(name: "s3", delay: toolDelay, counter: counter)
+  let recorder = ToolExecutionRecorder()
+  let t1 = RecordingTool(name: "s1", recorder: recorder)
+  let t2 = RecordingTool(name: "s2", recorder: recorder)
+  let t3 = RecordingTool(name: "s3", recorder: recorder)
   let session = makeSession(tools: [t1, t2, t3])
 
   let calls = [call("s1"), call("s2"), call("s3")]
   let byName: [String: any Tool] = ["s1": t1, "s2": t2, "s3": t3]
 
-  let start = Date()
   let outputs = try await session.executeToolDecisionsInParallel(
     transcriptCalls: calls,
     decisions: [.execute, .execute, .execute],
     toolsByName: byName
   )
-  let elapsed = Date().timeIntervalSince(start)
+  let intervals = await recorder.recordedIntervals()
 
-  // Self-relative: concurrent must be < 80% of serial. Robust to runner
-  // speed; only fails if dispatch silently regresses to serial.
-  let serialEstimate = toolDelay * Double(calls.count)
-  #expect(elapsed < serialEstimate * 0.8)
   #expect(outputs.count == 3)
-  #expect(await counter.count == 3)
+  #expect(intervals.count == 3)
+  #expect(hasOverlappingIntervals(intervals))
   // Output order preserved from input order.
   #expect(outputs[0].toolName == "s1")
   #expect(outputs[1].toolName == "s2")
