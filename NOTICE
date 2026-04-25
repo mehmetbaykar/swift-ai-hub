@@ -16,3 +16,6 @@ This product includes software developed at:
   policy.
   Swarm: source for the @Tool / @Parameter macro design and the
   SwarmMCP module shape (mirrored by FastMCPAIBridge in swift-fast-mcp).
+
+The MIT license texts for Conduit and Swarm are preserved verbatim in the
+LICENSES/ directory (LICENSES/Conduit-MIT.txt, LICENSES/Swarm-MIT.txt).
