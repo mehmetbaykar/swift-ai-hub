@@ -31,8 +31,14 @@ let package = Package(
     .package(url: "https://github.com/apple/swift-collections.git", from: "1.1.0"),
     .package(url: "https://github.com/mattt/JSONSchema.git", from: "1.3.0"),
     .package(url: "https://github.com/mattt/EventSource.git", from: "1.3.0"),
-    .package(url: "https://github.com/ml-explore/mlx-swift-lm", from: "2.25.5"),
+    // Pinned to a main-branch commit (post-3.31.3) that widens its swift-syntax range
+    // to <604; the 3.31.3 tag pins <601, which conflicts with our macros target on
+    // Swift 6.2.x toolchains. Move back to a `from:` once a 3.31.4+ tag ships.
+    .package(
+      url: "https://github.com/ml-explore/mlx-swift-lm",
+      revision: "7e2b7107be52ffbfe488f3c7987d3f52c1858b4b"),
     .package(url: "https://github.com/huggingface/swift-transformers", from: "1.0.0"),
+    .package(url: "https://github.com/huggingface/swift-huggingface", branch: "main"),
     .package(url: "https://github.com/mattt/llama.swift", .upToNextMajor(from: "2.7484.0")),
     .package(url: "https://github.com/mattt/PartialJSONDecoder", from: "1.0.0"),
     .package(url: "https://github.com/swift-server/async-http-client.git", from: "1.24.0"),
@@ -68,6 +74,14 @@ let package = Package(
             platforms: [.macOS, .iOS, .tvOS, .watchOS, .visionOS], traits: ["MLX"])),
         .product(
           name: "MLXLMCommon", package: "mlx-swift-lm",
+          condition: .when(
+            platforms: [.macOS, .iOS, .tvOS, .watchOS, .visionOS], traits: ["MLX"])),
+        .product(
+          name: "HuggingFace", package: "swift-huggingface",
+          condition: .when(
+            platforms: [.macOS, .iOS, .tvOS, .watchOS, .visionOS], traits: ["MLX"])),
+        .product(
+          name: "Tokenizers", package: "swift-transformers",
           condition: .when(
             platforms: [.macOS, .iOS, .tvOS, .watchOS, .visionOS], traits: ["MLX"])),
         .product(
