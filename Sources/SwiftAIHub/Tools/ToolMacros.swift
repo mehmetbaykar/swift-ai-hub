@@ -1,7 +1,7 @@
 // swift-ai-hub — Apache-2.0
 //
 // Portions of this file are ported from Christopher Karani's Swarm (MIT).
-// See NOTICE for attribution.
+// See LICENSE for attribution.
 //
 // Public declarations for the @Tool and @Parameter macros. Implementations
 // live in the SwiftAIHubMacros compiler plugin.

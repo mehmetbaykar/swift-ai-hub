@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Mehmet Baykar — swift-ai-hub (Apache-2.0)
 //
 // Portions of this file are ported from Hugging Face's AnyLanguageModel
-// (Apache-2.0). See NOTICE for attribution.
+// (Apache-2.0). See LICENSE for attribution.
 
 import SwiftCompilerPlugin
 import SwiftDiagnostics

@@ -1,7 +1,7 @@
 // swift-ai-hub — Apache-2.0
 //
 // Ported from Apple/HuggingFace AnyLanguageModel (Apache-2.0).
-// See NOTICE for attribution.
+// See LICENSE for attribution.
 
 #if HUB_USE_ASYNC_HTTP
   // AsyncHTTPClient.HTTPHandler introduces a Task type that clashes with Swift's Task.

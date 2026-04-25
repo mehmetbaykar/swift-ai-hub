@@ -2,7 +2,7 @@
 //
 // Portions of this file are ported from Christopher Karani's Conduit (MIT).
 // Original source: Sources/Conduit/Services/MLXCompatibilityChecker.swift.
-// See NOTICE for attribution.
+// See LICENSE for attribution.
 
 import Foundation
 

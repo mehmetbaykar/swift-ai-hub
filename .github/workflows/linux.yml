@@ -6,13 +6,11 @@ on:
     paths-ignore:
       - '**.md'
       - 'LICENSE'
-      - 'NOTICE'
   pull_request:
     branches: [main]
     paths-ignore:
       - '**.md'
       - 'LICENSE'
-      - 'NOTICE'
   workflow_dispatch:
 
 concurrency:

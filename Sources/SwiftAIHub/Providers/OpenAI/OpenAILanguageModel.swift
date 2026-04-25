@@ -1,7 +1,7 @@
 // swift-ai-hub — Apache-2.0
 //
 // Portions of this file are ported from Apple/HuggingFace AnyLanguageModel (Apache-2.0).
-// See NOTICE for attribution.
+// See LICENSE for attribution.
 
 import Foundation
 import JSONSchema

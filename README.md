@@ -105,4 +105,5 @@ Production HTTP on Linux can route through `AsyncHTTPClient` by enabling the
 
 ## License
 
-Apache-2.0. See `LICENSE`.
+MIT. See `LICENSE` (which also reproduces the upstream Apache-2.0 and MIT
+notices for portions ported from AnyLanguageModel, Conduit, and Swarm).
