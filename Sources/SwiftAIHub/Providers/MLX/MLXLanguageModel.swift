@@ -1105,57 +1105,105 @@ import Foundation
                 let userInputProcessing =
                   options[custom: MLXLanguageModel.self]?.processingForUserInput
                   ?? .init(resize: nil)
-                let chat = convertTranscriptToMLXChat(
+                var chat = convertTranscriptToMLXChat(
                   session: session,
                   fallbackPrompt: prompt.description
                 )
-
-                let userInput = makeUserInput(
-                  chat: chat,
-                  tools: nil,
-                  processing: userInputProcessing,
-                  additionalContext: additionalContext
-                )
-                let lmInput = try await context.processor.prepare(input: userInput)
-                let resolved = resolveCache(
-                  session: session,
-                  lmInput: lmInput,
-                  generateParameters: generateParameters,
-                  context: context
-                )
-
-                let mlxStream = try MLXLMCommon.generate(
-                  input: resolved.input,
-                  cache: resolved.cache,
-                  parameters: generateParameters,
-                  context: context
-                )
-
+                let toolSpecs = mlxToolSpecs(for: session)
+                let maxRounds = session.maxToolCallRounds
+                var round = 0
+                var previousToolCallSignature: String?
                 var accumulatedText = ""
-                for await item in mlxStream {
-                  if Task.isCancelled { break }
 
-                  switch item {
-                  case .chunk(let text):
-                    accumulatedText += text
-                    let raw = GeneratedContent(accumulatedText)
-                    let content: Content.PartiallyGenerated = (accumulatedText as! Content)
-                      .asPartiallyGenerated()
-                    continuation.yield(.init(content: content, rawContent: raw))
-                  case .info, .toolCall:
-                    break
+                roundLoop: while true {
+                  let userInput = makeUserInput(
+                    chat: chat,
+                    tools: toolSpecs,
+                    processing: userInputProcessing,
+                    additionalContext: additionalContext
+                  )
+                  let lmInput = try await context.processor.prepare(input: userInput)
+                  let resolved = resolveCache(
+                    session: session,
+                    lmInput: lmInput,
+                    generateParameters: generateParameters,
+                    context: context
+                  )
+
+                  let mlxStream = try MLXLMCommon.generate(
+                    input: resolved.input,
+                    cache: resolved.cache,
+                    parameters: generateParameters,
+                    context: context
+                  )
+
+                  var assistantTextThisRound = ""
+                  var collectedToolCalls: [MLXLMCommon.ToolCall] = []
+                  for await item in mlxStream {
+                    if Task.isCancelled { break }
+
+                    switch item {
+                    case .chunk(let text):
+                      accumulatedText += text
+                      assistantTextThisRound += text
+                      let raw = GeneratedContent(accumulatedText)
+                      let content: Content.PartiallyGenerated = (accumulatedText as! Content)
+                        .asPartiallyGenerated()
+                      continuation.yield(.init(content: content, rawContent: raw))
+                    case .toolCall(let call):
+                      collectedToolCalls.append(call)
+                    case .info:
+                      break
+                    }
+                  }
+
+                  storeSessionCache(
+                    cache: resolved.cache,
+                    fullTokens: resolved.fullTokens,
+                    generateParameters: generateParameters,
+                    session: session
+                  )
+
+                  if collectedToolCalls.isEmpty || Task.isCancelled {
+                    finishScope()
+                    finishGenerationSlot()
+                    continuation.finish()
+                    return
+                  }
+
+                  if !assistantTextThisRound.isEmpty {
+                    chat.append(.assistant(assistantTextThisRound))
+                  }
+
+                  round += 1
+                  if round > maxRounds {
+                    throw LanguageModelSession.ToolCallLoopExceeded(rounds: round)
+                  }
+
+                  let signature =
+                    collectedToolCalls
+                    .map { "\($0.function.name):\($0.function.arguments)" }
+                    .joined(separator: "|")
+                  if signature == previousToolCallSignature {
+                    throw Self.repeatedToolCallLoopError()
+                  }
+                  previousToolCallSignature = signature
+
+                  let resolution = try await resolveToolCalls(collectedToolCalls, session: session)
+                  switch resolution {
+                  case .stop:
+                    finishScope()
+                    finishGenerationSlot()
+                    continuation.finish()
+                    return
+                  case .invocations(let invocations):
+                    for invocation in invocations {
+                      let toolResultJSON = toolOutputToJSON(invocation.output)
+                      chat.append(.tool(toolResultJSON))
+                    }
+                    continue roundLoop
                   }
                 }
-
-                storeSessionCache(
-                  cache: resolved.cache,
-                  fullTokens: resolved.fullTokens,
-                  generateParameters: generateParameters,
-                  session: session
-                )
-                finishScope()
-                finishGenerationSlot()
-                continuation.finish()
               } catch {
                 finishScope()
                 finishGenerationSlot()

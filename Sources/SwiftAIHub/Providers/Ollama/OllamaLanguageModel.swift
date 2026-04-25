@@ -187,9 +187,6 @@ public struct OllamaLanguageModel: LanguageModel {
   ) -> sending LanguageModelSession.ResponseStream<Content> where Content: Generable {
     let userSegments = extractPromptSegments(from: session, fallbackText: prompt.description)
     let (ollamaText, ollamaImages) = convertSegmentsToOllama(userSegments)
-    let messages = [
-      OllamaMessage(role: .user, content: ollamaText)
-    ]
     let ollamaOptions = convertOptions(options)
     let url = baseURL.appendingPathComponent("api/chat")
 
@@ -197,32 +194,36 @@ public struct OllamaLanguageModel: LanguageModel {
     let stream:
       AsyncThrowingStream<LanguageModelSession.ResponseStream<Content>.Snapshot, any Error> =
         AsyncThrowingStream { continuation in
-          do {
-            let ollamaTools = try session.tools.map { tool in
-              try convertToolToOllamaFormat(tool)
-            }
-            let ollamaFormat: JSONValue?
-            if type == String.self {
-              ollamaFormat = nil
-            } else {
-              let schema = try convertSchemaToOllamaFormat(type.generationSchema)
-              ollamaFormat = try JSONValue(schema)
-            }
+          let task = Task {
+            do {
+              let ollamaTools = try session.tools.map { tool in
+                try convertToolToOllamaFormat(tool)
+              }
+              let ollamaFormat: JSONValue?
+              if type == String.self {
+                ollamaFormat = nil
+              } else {
+                let schema = try convertSchemaToOllamaFormat(type.generationSchema)
+                ollamaFormat = try JSONValue(schema)
+              }
 
-            let params = try createChatParams(
-              model: model,
-              messages: messages,
-              tools: ollamaTools.isEmpty ? nil : ollamaTools,
-              options: ollamaOptions,
-              stream: true,
-              images: (ollamaImages.isEmpty ? nil : ollamaImages),
-              format: ollamaFormat
-            )
-            let body = try JSONEncoder().encode(params)
+              var messages = [OllamaMessage(role: .user, content: ollamaText)]
+              let maxRounds = session.maxToolCallRounds
+              var round = 0
+              var partialText = ""
 
-            let task = Task {
-              // Reuse ChatResponse as each streamed line shares the same shape
-              do {
+              roundLoop: while true {
+                let params = try createChatParams(
+                  model: model,
+                  messages: messages,
+                  tools: ollamaTools.isEmpty ? nil : ollamaTools,
+                  options: ollamaOptions,
+                  stream: true,
+                  images: (ollamaImages.isEmpty ? nil : ollamaImages),
+                  format: ollamaFormat
+                )
+                let body = try JSONEncoder().encode(params)
+
                 let chunks =
                   httpSession.fetchStream(
                     .post,
@@ -231,11 +232,13 @@ public struct OllamaLanguageModel: LanguageModel {
                     dateDecodingStrategy: .iso8601WithFractionalSeconds
                   ) as AsyncThrowingStream<ChatResponse, any Error>
 
-                var partialText = ""
+                var collectedToolCalls: [OllamaToolCall] = []
+                var assistantTextThisRound = ""
 
                 for try await chunk in chunks {
                   if let piece = chunk.message.content {
                     partialText += piece
+                    assistantTextThisRound += piece
                     if type == String.self {
                       let snapshot = LanguageModelSession.ResponseStream<Content>.Snapshot(
                         content: (partialText as! Content).asPartiallyGenerated(),
@@ -256,22 +259,48 @@ public struct OllamaLanguageModel: LanguageModel {
                     }
                   }
 
+                  if let toolCalls = chunk.message.toolCalls, !toolCalls.isEmpty {
+                    collectedToolCalls.append(contentsOf: toolCalls)
+                  }
+
                   if chunk.done {
                     break
                   }
                 }
 
-                continuation.finish()
-              } catch {
-                continuation.finish(throwing: error)
-              }
-            }
+                if collectedToolCalls.isEmpty {
+                  continuation.finish()
+                  return
+                }
 
-            continuation.onTermination = { _ in
-              task.cancel()
+                if round >= maxRounds {
+                  throw LanguageModelSession.ToolCallLoopExceeded(rounds: round)
+                }
+                round += 1
+
+                messages.append(
+                  OllamaMessage(role: .assistant, content: assistantTextThisRound))
+                let resolution = try await resolveToolCalls(collectedToolCalls, session: session)
+                switch resolution {
+                case .stop:
+                  continuation.finish()
+                  return
+                case .invocations(let invocations):
+                  for invocation in invocations {
+                    let resultText = convertSegmentsToOllama(invocation.output.segments).0
+                    messages.append(OllamaMessage(role: .tool, content: resultText))
+                  }
+                  partialText = ""
+                  continue roundLoop
+                }
+              }
+            } catch {
+              continuation.finish(throwing: error)
             }
-          } catch {
-            continuation.finish(throwing: error)
+          }
+
+          continuation.onTermination = { _ in
+            task.cancel()
           }
         }
 
