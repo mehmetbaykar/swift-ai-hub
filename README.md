@@ -20,7 +20,7 @@ print(reply.content)
 Add to your `Package.swift`:
 
 ```swift
-.package(url: "https://github.com/mehmetbaykar/swift-ai-hub", from: "0.5.0"),
+.package(url: "https://github.com/mehmetbaykar/swift-ai-hub", from: "0.6.0"),
 ```
 
 ```swift
@@ -43,6 +43,27 @@ Declare a tool as a struct, hand it to the session, let the loop run:
 ```swift
 @Tool("Get weather for a location")
 struct WeatherTool {
+  @Parameter("City or coordinates") var location: String = ""
+
+  func execute() async throws -> String {
+    "Weather in \(location): 22°C, sunny"
+  }
+}
+
+let session = LanguageModelSession(
+  model: OpenAILanguageModel(apiKey: "sk-...", model: "gpt-5.4-mini"),
+  tools: [WeatherTool()]
+)
+let reply = try await session.respond(to: "What's the weather in Berlin?")
+```
+
+Tools with richer parameter schemas — nested types, recursive `@Generable`,
+shared `$ref` schemas, or DocC documentation on the parameter container — can
+use the explicit nested-`Arguments` form instead:
+
+```swift
+@Tool("Get weather for a location")
+struct WeatherTool {
   @Generable
   struct Arguments {
     @Parameter("City or coordinates") var location: String
@@ -52,12 +73,6 @@ struct WeatherTool {
     "Weather in \(arguments.location): 22°C, sunny"
   }
 }
-
-let session = LanguageModelSession(
-  model: OpenAILanguageModel(apiKey: "sk-...", model: "gpt-5.4-mini"),
-  tools: [WeatherTool()]
-)
-let reply = try await session.respond(to: "What's the weather in Berlin?")
 ```
 
 ## Streaming
