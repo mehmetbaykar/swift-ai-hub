@@ -493,6 +493,7 @@ public struct AnthropicLanguageModel: LanguageModel {
             let maxRounds = session.maxToolCallRounds
             var round = 0
             var accumulatedText = ""
+            var accumulatedThinking = ""
             let expectsStructuredResponse = type != String.self
 
             // W2 I8a: streaming tool-loop.
@@ -533,7 +534,8 @@ public struct AnthropicLanguageModel: LanguageModel {
                     accumulatedText += textDelta.text
                     if expectsStructuredResponse {
                       if let snapshot: LanguageModelSession.ResponseStream<Content>.Snapshot =
-                        try? partialSnapshot(from: accumulatedText)
+                        try? partialSnapshot(
+                          from: accumulatedText, thinking: accumulatedThinking)
                       {
                         continuation.yield(snapshot)
                       }
@@ -541,7 +543,26 @@ public struct AnthropicLanguageModel: LanguageModel {
                       let raw = GeneratedContent(accumulatedText)
                       let content: Content.PartiallyGenerated = (accumulatedText as! Content)
                         .asPartiallyGenerated()
-                      continuation.yield(.init(content: content, rawContent: raw))
+                      continuation.yield(
+                        .init(content: content, rawContent: raw, thinking: accumulatedThinking))
+                    }
+                  case .thinkingDelta(let thinkingDelta):
+                    accumulatedThinking += thinkingDelta.thinking
+                    // Yield even when only the thinking buffer grew so UIs see
+                    // the reasoning panel update before any visible answer.
+                    let raw = GeneratedContent(accumulatedText)
+                    if expectsStructuredResponse {
+                      if let snapshot: LanguageModelSession.ResponseStream<Content>.Snapshot =
+                        try? partialSnapshot(
+                          from: accumulatedText, thinking: accumulatedThinking)
+                      {
+                        continuation.yield(snapshot)
+                      }
+                    } else {
+                      let content: Content.PartiallyGenerated = (accumulatedText as! Content)
+                        .asPartiallyGenerated()
+                      continuation.yield(
+                        .init(content: content, rawContent: raw, thinking: accumulatedThinking))
                     }
                   case .inputJsonDelta(let jsonDelta):
                     pendingToolUses[delta.index]?.partialJson += jsonDelta.partialJson
@@ -760,11 +781,12 @@ private func emptyResponseContent<Content: Generable>(
 }
 
 private func partialSnapshot<Content: Generable>(
-  from accumulatedText: String
+  from accumulatedText: String,
+  thinking: String = ""
 ) throws -> LanguageModelSession.ResponseStream<Content>.Snapshot {
   let raw = try GeneratedContent(json: accumulatedText)
   let content = try Content.PartiallyGenerated(raw)
-  return .init(content: content, rawContent: raw)
+  return .init(content: content, rawContent: raw, thinking: thinking)
 }
 
 private func convertSchemaToAnthropicFormat(_ schema: GenerationSchema) throws -> JSONSchema {
@@ -1240,6 +1262,7 @@ private enum AnthropicStreamEvent: Codable, Sendable {
     enum Delta: Codable, Sendable {
       case textDelta(TextDelta)
       case inputJsonDelta(InputJsonDelta)
+      case thinkingDelta(ThinkingDelta)
       case ignored
 
       enum CodingKeys: String, CodingKey { case type }
@@ -1253,7 +1276,12 @@ private enum AnthropicStreamEvent: Codable, Sendable {
           self = .textDelta(try TextDelta(from: decoder))
         case "input_json_delta":
           self = .inputJsonDelta(try InputJsonDelta(from: decoder))
+        case "thinking_delta":
+          self = .thinkingDelta(try ThinkingDelta(from: decoder))
         default:
+          // Includes "signature_delta" — the signed-thinking metadata is
+          // not surfaced as text; consumers wanting round-trip support
+          // would need a future addition that captures it.
           self = .ignored
         }
       }
@@ -1262,6 +1290,7 @@ private enum AnthropicStreamEvent: Codable, Sendable {
         switch self {
         case .textDelta(let delta): try delta.encode(to: encoder)
         case .inputJsonDelta(let delta): try delta.encode(to: encoder)
+        case .thinkingDelta(let delta): try delta.encode(to: encoder)
         case .ignored:
           var container = encoder.container(keyedBy: CodingKeys.self)
           try container.encode("ignored", forKey: .type)
@@ -1281,6 +1310,11 @@ private enum AnthropicStreamEvent: Codable, Sendable {
           case type
           case partialJson = "partial_json"
         }
+      }
+
+      struct ThinkingDelta: Codable, Sendable {
+        let type: String
+        let thinking: String
       }
     }
   }

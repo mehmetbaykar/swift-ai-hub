@@ -750,6 +750,7 @@ public struct OpenAILanguageModel: LanguageModel {
               let maxRounds = session.maxToolCallRounds
               var round = 0
               var accumulatedText = ""
+              var accumulatedThinking = ""
 
               roundLoop: while true {
                 let params: JSONValue =
@@ -797,6 +798,16 @@ public struct OpenAILanguageModel: LanguageModel {
                       yieldStreamSnapshot(
                         type: type,
                         accumulatedText: accumulatedText,
+                        thinking: accumulatedThinking,
+                        continuation: continuation
+                      )
+
+                    case .reasoningDelta(let delta):
+                      accumulatedThinking += delta
+                      yieldStreamSnapshot(
+                        type: type,
+                        accumulatedText: accumulatedText,
+                        thinking: accumulatedThinking,
                         continuation: continuation
                       )
 
@@ -834,6 +845,17 @@ public struct OpenAILanguageModel: LanguageModel {
                       yieldStreamSnapshot(
                         type: type,
                         accumulatedText: accumulatedText,
+                        thinking: accumulatedThinking,
+                        continuation: continuation
+                      )
+                    }
+
+                    if let thinkingFragment = choice.delta.thinkingFragment {
+                      accumulatedThinking += thinkingFragment
+                      yieldStreamSnapshot(
+                        type: type,
+                        accumulatedText: accumulatedText,
+                        thinking: accumulatedThinking,
                         continuation: continuation
                       )
                     }
@@ -915,6 +937,7 @@ public struct OpenAILanguageModel: LanguageModel {
                     )
                   }
                   accumulatedText = ""
+                  accumulatedThinking = ""
                   continue roundLoop
                 }
               }
@@ -932,6 +955,7 @@ public struct OpenAILanguageModel: LanguageModel {
 private func yieldStreamSnapshot<Content: Generable>(
   type: Content.Type,
   accumulatedText: String,
+  thinking: String = "",
   continuation: AsyncThrowingStream<
     LanguageModelSession.ResponseStream<Content>.Snapshot, any Error
   >.Continuation
@@ -955,7 +979,7 @@ private func yieldStreamSnapshot<Content: Generable>(
   }
 
   if let content {
-    continuation.yield(.init(content: content, rawContent: raw))
+    continuation.yield(.init(content: content, rawContent: raw, thinking: thinking))
   }
 }
 
@@ -1736,6 +1760,7 @@ private struct OpenAIToolFunction: Codable, Sendable {
 
 private enum OpenAIResponsesServerEvent: Decodable, Sendable {
   case outputTextDelta(String)
+  case reasoningDelta(String)
   case toolCallFragment(OpenAIStreamingToolCallFragment)
   case completed(String)
   case ignored
@@ -1746,6 +1771,10 @@ private enum OpenAIResponsesServerEvent: Decodable, Sendable {
     switch type {
     case "response.output_text.delta":
       self = .outputTextDelta(try container.decode(String.self, forKey: .delta))
+    case "response.reasoning.delta", "response.reasoning_summary.delta":
+      // o-series + GPT-5 emit thinking on a dedicated channel. Both event
+      // shapes carry the fragment in the same `delta` field.
+      self = .reasoningDelta(try container.decode(String.self, forKey: .delta))
     case "response.tool_call.created", "response.tool_call.delta":
       // Tolerant decode: deltas may carry only argument fragments without
       // re-stating id/name/type, so every field is optional.
@@ -1805,6 +1834,18 @@ private struct OpenAIChatCompletionsChunk: Decodable, Sendable {
       let role: String?
       let content: String?
       let toolCalls: [ToolCallDelta]?
+      /// `reasoning` is the standard OpenAI Chat Completions name (gpt-5,
+      /// o-series); `reasoning_content` is the alias Moonshot Kimi K2 uses
+      /// on its OpenAI-compatible endpoint. Either field is treated as the
+      /// thinking buffer fragment.
+      let reasoning: String?
+      let reasoningContent: String?
+
+      var thinkingFragment: String? {
+        if let r = reasoning, !r.isEmpty { return r }
+        if let r = reasoningContent, !r.isEmpty { return r }
+        return nil
+      }
 
       struct ToolCallDelta: Decodable, Sendable {
         let index: Int
@@ -1822,6 +1863,8 @@ private struct OpenAIChatCompletionsChunk: Decodable, Sendable {
         case role
         case content
         case toolCalls = "tool_calls"
+        case reasoning
+        case reasoningContent = "reasoning_content"
       }
     }
     let delta: Delta

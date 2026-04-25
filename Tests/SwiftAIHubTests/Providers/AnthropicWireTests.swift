@@ -178,6 +178,56 @@ struct AnthropicWireTests {
   /// accumulated snapshot text matches the concatenated deltas. This
   /// covers the SSE framing + `text_delta` decoder that the real API
   /// relies on.
+  @Test func `sse streaming exposes thinking and content separately`() async throws {
+    await MockRequestScript.shared.reset(host: anthropicHost)
+
+    let sseBody = """
+      event: message_start
+      data: {"type":"message_start","message":{"id":"m1","type":"message","role":"assistant","model":"claude-test","stop_reason":null,"content":[]}}
+
+      event: content_block_start
+      data: {"type":"content_block_start","index":0,"content_block":{"type":"thinking","thinking":""}}
+
+      event: content_block_delta
+      data: {"type":"content_block_delta","index":0,"delta":{"type":"thinking_delta","thinking":"Let me "}}
+
+      event: content_block_delta
+      data: {"type":"content_block_delta","index":0,"delta":{"type":"thinking_delta","thinking":"think..."}}
+
+      event: content_block_start
+      data: {"type":"content_block_start","index":1,"content_block":{"type":"text","text":""}}
+
+      event: content_block_delta
+      data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":"42"}}
+
+      event: message_stop
+      data: {"type":"message_stop"}
+
+
+      """
+
+    await MockRequestScript.shared.enqueue(
+      MockResponse(
+        statusCode: 200,
+        headers: ["Content-Type": "text/event-stream"],
+        body: Data(sseBody.utf8)
+      ),
+      host: anthropicHost
+    )
+
+    let session = LanguageModelSession(model: makeAnthropicModel())
+    let stream = session.streamResponse(to: "what is 6x7?")
+
+    var lastContent = ""
+    var lastThinking = ""
+    for try await snapshot in stream {
+      lastContent = snapshot.content
+      lastThinking = snapshot.thinking
+    }
+    #expect(lastContent == "42")
+    #expect(lastThinking == "Let me think...")
+  }
+
   @Test func `sse streaming accumulates text deltas`() async throws {
     await MockRequestScript.shared.reset(host: anthropicHost)
 
