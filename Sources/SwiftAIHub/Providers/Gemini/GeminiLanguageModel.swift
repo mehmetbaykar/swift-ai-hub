@@ -542,10 +542,8 @@ public struct GeminiLanguageModel: LanguageModel {
   }
 
   /// Issues a non-streaming generateContent POST and decodes the response.
-  ///
-  /// Routes through `httpSession.fetch` (shared URLSession/HTTPClient surface)
-  /// and converts a 429 into `LanguageModelSession.GenerationError.rateLimited`
-  /// carrying `RateLimitInfo` parsed from the response headers.
+  /// Converts 429 into ``LanguageModelSession/GenerationError/rateLimited``
+  /// carrying ``RateLimitInfo`` parsed from the response headers.
   fileprivate func fetchGeminiResponse(
     url: URL,
     headers: [String: String],

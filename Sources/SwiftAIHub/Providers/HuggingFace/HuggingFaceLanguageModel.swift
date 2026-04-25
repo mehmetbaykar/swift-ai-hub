@@ -250,7 +250,6 @@ public struct HuggingFaceLanguageModel: LanguageModel {
       let hfOptions = options[custom: HuggingFaceLanguageModel.self]
       let stringResponse = try await runEnhancedStringRespond(
         session: session,
-        prompt: prompt,
         options: options,
         hfOptions: hfOptions
       )
@@ -312,7 +311,6 @@ public struct HuggingFaceLanguageModel: LanguageModel {
 
   private func runEnhancedStringRespond(
     session: LanguageModelSession,
-    prompt: Prompt,
     options: GenerationOptions,
     hfOptions: CustomGenerationOptions?
   ) async throws -> LanguageModelSession.Response<String> {
@@ -350,9 +348,6 @@ public struct HuggingFaceLanguageModel: LanguageModel {
     headers: [String: String],
     body: Data
   ) async throws -> LanguageModelSession.Response<String> {
-    // Route through the shared `fetch` surface so both URLSession and HTTPClient
-    // backends work. `withHFErrorMapping` translates `URLSessionError.httpError`
-    // (including 429 headers) into `HuggingFaceLanguageModelError`.
     let decoded: ChatCompletionsResponse = try await httpSession.fetch(
       .post,
       url: url,
@@ -412,44 +407,6 @@ public struct HuggingFaceLanguageModel: LanguageModel {
         attempt += 1
         continue
       }
-    }
-  }
-
-  private static func throwMappedError(
-    statusCode: Int,
-    data: Data,
-    response: HTTPURLResponse
-  ) throws {
-    let envelope = try? JSONDecoder().decode(HFErrorEnvelope.self, from: data)
-    let message =
-      envelope?.error
-      ?? String(data: data, encoding: .utf8).map(redactSensitiveHeaders)
-      ?? "HTTP \(statusCode)"
-
-    var headers: [String: String] = [:]
-    for (key, value) in response.allHeaderFields {
-      if let k = key as? String, let v = value as? String { headers[k] = v }
-    }
-
-    switch statusCode {
-    case 401:
-      throw HuggingFaceLanguageModelError.unauthorized(message: message)
-    case 403:
-      throw HuggingFaceLanguageModelError.forbidden(message: message)
-    case 429:
-      throw HuggingFaceLanguageModelError.rateLimited(
-        message: message,
-        rateLimit: RateLimitInfo.from(headers: headers)
-      )
-    case 503:
-      if let estimated = envelope?.estimated_time {
-        throw HuggingFaceLanguageModelError.modelDownloading(estimatedTime: estimated)
-      }
-      throw HuggingFaceLanguageModelError.serverError(statusCode: statusCode, message: message)
-    case 500..<600:
-      throw HuggingFaceLanguageModelError.serverError(statusCode: statusCode, message: message)
-    default:
-      throw HuggingFaceLanguageModelError.httpError(statusCode: statusCode, message: message)
     }
   }
 

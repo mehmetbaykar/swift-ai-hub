@@ -377,9 +377,8 @@ public final class LanguageModelSession: @unchecked Sendable {
     includeSchemaInPrompt: Bool = true,
     options: GenerationOptions = GenerationOptions()
   ) -> sending ResponseStream<Content> where Content: Generable {
-    // Append prompt to transcript before constructing the upstream so providers
-    // that serialize `session.transcript` at stream-init time see the current
-    // prompt. Matches AnyLanguageModel's streamResponse ordering.
+    // Provider may serialize `session.transcript` synchronously at stream
+    // construction; append before the call so the new prompt is visible.
     let promptEntry = Transcript.Entry.prompt(
       Transcript.Prompt(
         segments: [.text(.init(content: prompt.description))],
@@ -783,9 +782,8 @@ extension LanguageModelSession {
     }
     segments.append(contentsOf: images.map { .image($0) })
 
-    // Append prompt to transcript before constructing the upstream so providers
-    // that serialize `session.transcript` at stream-init time see the current
-    // prompt. Matches AnyLanguageModel's streamResponse ordering.
+    // Provider may serialize `session.transcript` synchronously at stream
+    // construction; append before the call so the new prompt is visible.
     let promptEntry = Transcript.Entry.prompt(
       Transcript.Prompt(
         segments: segments,
@@ -797,7 +795,6 @@ extension LanguageModelSession {
       state.withLock { $0.transcript.append(promptEntry) }
     }
 
-    // Extract text content for the Prompt parameter
     let textPrompt = Prompt(prompt)
 
     return wrapStream(

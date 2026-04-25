@@ -6,7 +6,7 @@
 #if HUB_USE_ASYNC_HTTP
   // AsyncHTTPClient.HTTPHandler introduces a Task type that clashes with Swift's Task.
   // Bind Swift's structured-concurrency Task before importing AsyncHTTPClient.
-  typealias SwiftTask = Task
+  private typealias SwiftTask = Task
 
   private final class HTTPClientBodyReaderTaskBox: @unchecked Sendable {
     var task: SwiftTask<Void, Never>?
