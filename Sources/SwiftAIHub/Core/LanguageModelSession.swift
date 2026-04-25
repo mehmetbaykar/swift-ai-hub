@@ -966,13 +966,27 @@ extension LanguageModelSession {
       public var content: Content.PartiallyGenerated
       public var rawContent: GeneratedContent
 
+      /// Full running thinking buffer for reasoning models.
+      ///
+      /// Accumulates as the stream progresses. Empty for models that do not
+      /// emit reasoning. Same accumulated state-view semantics as `content` —
+      /// each snapshot carries the full thinking so far, not a delta.
+      public var thinking: String
+
       /// Creates a snapshot from partially generated content and raw content.
       /// - Parameters:
       ///   - content: The partially generated content.
       ///   - rawContent: The raw content produced by the model.
-      public init(content: Content.PartiallyGenerated, rawContent: GeneratedContent) {
+      ///   - thinking: Full running thinking buffer; empty when the model
+      ///     does not emit reasoning.
+      public init(
+        content: Content.PartiallyGenerated,
+        rawContent: GeneratedContent,
+        thinking: String = ""
+      ) {
         self.content = content
         self.rawContent = rawContent
+        self.thinking = thinking
       }
     }
   }
