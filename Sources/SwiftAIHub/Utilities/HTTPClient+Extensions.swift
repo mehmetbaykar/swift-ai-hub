@@ -96,7 +96,9 @@
 
             guard (200..<300).contains(response.status.code) else {
               let bodyData = try await Data(buffer: response.body.collect(upTo: 1024 * 1024))
-              let detail = String(data: bodyData, encoding: .utf8) ?? "Invalid response"
+              let detail =
+                String(data: bodyData, encoding: .utf8)
+                .map(redactSensitiveHeaders) ?? "Invalid response"
               throw URLSessionError.httpError(
                 statusCode: Int(response.status.code),
                 detail: detail,
@@ -161,7 +163,9 @@
 
             guard (200..<300).contains(response.status.code) else {
               let bodyData = try await Data(buffer: response.body.collect(upTo: 1024 * 1024))
-              let detail = String(data: bodyData, encoding: .utf8) ?? "Invalid response"
+              let detail =
+                String(data: bodyData, encoding: .utf8)
+                .map(redactSensitiveHeaders) ?? "Invalid response"
               throw URLSessionError.httpError(
                 statusCode: Int(response.status.code),
                 detail: detail,
