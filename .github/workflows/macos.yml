@@ -39,7 +39,7 @@ jobs:
       - run: swift test
 
   all-traits:
-    name: macOS swift build (MLX, CoreML, Llama, FoundationModels)
+    name: macOS swift test (MLX, CoreML, Llama, FoundationModels)
     runs-on: macos-26
     steps:
       - uses: actions/checkout@v6
@@ -52,23 +52,23 @@ jobs:
           key: ${{ runner.os }}-spm-all-traits-${{ hashFiles('Package.swift', 'Package.resolved') }}
           restore-keys: |
             ${{ runner.os }}-spm-all-traits-
-      - run: swift build --traits MLX,CoreML,Llama,FoundationModels
+      - run: swift test --traits MLX,CoreML,Llama,FoundationModels
 
   apple-platforms:
-    name: ${{ matrix.platform }} build
+    name: ${{ matrix.platform }} test
     runs-on: macos-26
     strategy:
       fail-fast: false
       matrix:
         include:
           - platform: iOS
-            destination: generic/platform=iOS Simulator
+            destination: platform=iOS Simulator,name=iPhone 17,OS=latest
           - platform: tvOS
-            destination: generic/platform=tvOS Simulator
+            destination: platform=tvOS Simulator,name=Apple TV,OS=latest
           - platform: watchOS
-            destination: generic/platform=watchOS Simulator
+            destination: platform=watchOS Simulator,name=Apple Watch Series 11 (46mm),OS=latest
           - platform: visionOS
-            destination: generic/platform=visionOS Simulator
+            destination: platform=visionOS Simulator,name=Apple Vision Pro,OS=latest
     steps:
       - uses: actions/checkout@v6
       - name: Cache SPM
@@ -80,9 +80,9 @@ jobs:
           key: ${{ runner.os }}-spm-${{ matrix.platform }}-${{ hashFiles('Package.swift', 'Package.resolved') }}
           restore-keys: |
             ${{ runner.os }}-spm-${{ matrix.platform }}-
-      - name: xcodebuild build
+      - name: xcodebuild test
         run: |
-          xcodebuild build \
+          xcodebuild test \
             -scheme swift-ai-hub \
             -destination '${{ matrix.destination }}' \
             -skipPackagePluginValidation \

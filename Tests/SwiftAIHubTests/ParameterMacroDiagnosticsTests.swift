@@ -1,123 +1,132 @@
 // swift-ai-hub — Apache-2.0
 // Diagnostic tests for @Parameter: misuse outside nested @Generable Arguments
 // struct inside a @Tool type must produce an actionable compile-time error.
+//
+// Macro testing infrastructure (SwiftSyntaxMacrosTestSupport, the macro
+// target itself) only runs host-side, so this file is macOS-only. The
+// behavioral tests in the rest of the suite still run on every Apple
+// platform.
 
-import SwiftSyntaxMacros
-import SwiftSyntaxMacrosTestSupport
-import XCTest
+#if os(macOS)
 
-@testable import SwiftAIHubMacros
+  import SwiftSyntaxMacros
+  import SwiftSyntaxMacrosTestSupport
+  import XCTest
 
-final class ParameterMacroDiagnosticsTests: XCTestCase {
-  private let testMacros: [String: Macro.Type] = [
-    "Parameter": ParameterMacro.self
-  ]
+  @testable import SwiftAIHubMacros
 
-  private static let misplacedMessage =
-    "@Parameter must be declared on a stored property of a nested @Generable struct named Arguments inside a @Tool type. To carry dependencies, use a plain stored property without @Parameter."
+  final class ParameterMacroDiagnosticsTests: XCTestCase {
+    private let testMacros: [String: Macro.Type] = [
+      "Parameter": ParameterMacro.self
+    ]
 
-  func testParameterAtFileScopeDiagnoses() {
-    assertMacroExpansion(
-      """
-      @Parameter("oops")
-      var bad: String
-      """,
-      expandedSource: """
+    private static let misplacedMessage =
+      "@Parameter must be declared on a stored property of a nested @Generable struct named Arguments inside a @Tool type. To carry dependencies, use a plain stored property without @Parameter."
+
+    func testParameterAtFileScopeDiagnoses() {
+      assertMacroExpansion(
+        """
+        @Parameter("oops")
         var bad: String
         """,
-      diagnostics: [
-        DiagnosticSpec(
-          message: Self.misplacedMessage,
-          line: 1,
-          column: 1,
-          severity: .error
-        )
-      ],
-      macros: testMacros
-    )
-  }
-
-  func testParameterInPlainStructDiagnoses() {
-    assertMacroExpansion(
-      """
-      struct Foo {
-          @Parameter("oops")
+        expandedSource: """
           var bad: String
-      }
-      """,
-      expandedSource: """
+          """,
+        diagnostics: [
+          DiagnosticSpec(
+            message: Self.misplacedMessage,
+            line: 1,
+            column: 1,
+            severity: .error
+          )
+        ],
+        macros: testMacros
+      )
+    }
+
+    func testParameterInPlainStructDiagnoses() {
+      assertMacroExpansion(
+        """
         struct Foo {
+            @Parameter("oops")
             var bad: String
         }
         """,
-      diagnostics: [
-        DiagnosticSpec(
-          message: Self.misplacedMessage,
-          line: 2,
-          column: 5,
-          severity: .error
-        )
-      ],
-      macros: testMacros
-    )
-  }
-
-  func testParameterInMisnamedNestedStructDiagnoses() {
-    assertMacroExpansion(
-      """
-      @Tool("desc")
-      struct MyTool {
-          @Generable
-          struct Params {
-              @Parameter("oops")
+        expandedSource: """
+          struct Foo {
               var bad: String
           }
-      }
-      """,
-      expandedSource: """
+          """,
+        diagnostics: [
+          DiagnosticSpec(
+            message: Self.misplacedMessage,
+            line: 2,
+            column: 5,
+            severity: .error
+          )
+        ],
+        macros: testMacros
+      )
+    }
+
+    func testParameterInMisnamedNestedStructDiagnoses() {
+      assertMacroExpansion(
+        """
         @Tool("desc")
         struct MyTool {
             @Generable
             struct Params {
+                @Parameter("oops")
                 var bad: String
             }
         }
         """,
-      diagnostics: [
-        DiagnosticSpec(
-          message: Self.misplacedMessage,
-          line: 5,
-          column: 9,
-          severity: .error
-        )
-      ],
-      macros: testMacros
-    )
-  }
-
-  func testParameterInsideToolArgumentsProducesNoDiagnostic() {
-    assertMacroExpansion(
-      """
-      @Tool("desc")
-      struct MyTool {
-          @Generable
-          struct Arguments {
-              @Parameter("ok")
-              var message: String
+        expandedSource: """
+          @Tool("desc")
+          struct MyTool {
+              @Generable
+              struct Params {
+                  var bad: String
+              }
           }
-      }
-      """,
-      expandedSource: """
+          """,
+        diagnostics: [
+          DiagnosticSpec(
+            message: Self.misplacedMessage,
+            line: 5,
+            column: 9,
+            severity: .error
+          )
+        ],
+        macros: testMacros
+      )
+    }
+
+    func testParameterInsideToolArgumentsProducesNoDiagnostic() {
+      assertMacroExpansion(
+        """
         @Tool("desc")
         struct MyTool {
             @Generable
             struct Arguments {
+                @Parameter("ok")
                 var message: String
             }
         }
         """,
-      diagnostics: [],
-      macros: testMacros
-    )
+        expandedSource: """
+          @Tool("desc")
+          struct MyTool {
+              @Generable
+              struct Arguments {
+                  var message: String
+              }
+          }
+          """,
+        diagnostics: [],
+        macros: testMacros
+      )
+    }
   }
-}
+
+#endif

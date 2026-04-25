@@ -109,9 +109,13 @@ let package = Package(
       name: "SwiftAIHubTests",
       dependencies: [
         "SwiftAIHub",
-        "SwiftAIHubMacros",
-        .product(name: "SwiftSyntaxMacrosTestSupport", package: "swift-syntax"),
-        .product(name: "MacroTesting", package: "swift-macro-testing"),
+        .target(name: "SwiftAIHubMacros", condition: .when(platforms: [.macOS])),
+        .product(
+          name: "SwiftSyntaxMacrosTestSupport", package: "swift-syntax",
+          condition: .when(platforms: [.macOS])),
+        .product(
+          name: "MacroTesting", package: "swift-macro-testing",
+          condition: .when(platforms: [.macOS])),
       ]
     ),
   ],
