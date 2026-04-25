@@ -19,7 +19,7 @@ concurrency:
 
 jobs:
   no-traits:
-    name: swift build + test (no traits)
+    name: macOS swift build + test (no traits)
     runs-on: macos-26
     steps:
       - uses: actions/checkout@v6
@@ -39,7 +39,7 @@ jobs:
       - run: swift test
 
   all-traits:
-    name: swift build (MLX, CoreML, Llama, FoundationModels)
+    name: macOS swift build (MLX, CoreML, Llama, FoundationModels)
     runs-on: macos-26
     steps:
       - uses: actions/checkout@v6
@@ -53,3 +53,38 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-spm-all-traits-
       - run: swift build --traits MLX,CoreML,Llama,FoundationModels
+
+  apple-platforms:
+    name: ${{ matrix.platform }} build
+    runs-on: macos-26
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: iOS
+            destination: generic/platform=iOS Simulator
+          - platform: tvOS
+            destination: generic/platform=tvOS Simulator
+          - platform: watchOS
+            destination: generic/platform=watchOS Simulator
+          - platform: visionOS
+            destination: generic/platform=visionOS Simulator
+    steps:
+      - uses: actions/checkout@v6
+      - name: Cache SPM
+        uses: actions/cache@v5
+        with:
+          path: |
+            ~/Library/Caches/org.swift.swiftpm
+            .build
+          key: ${{ runner.os }}-spm-${{ matrix.platform }}-${{ hashFiles('Package.swift', 'Package.resolved') }}
+          restore-keys: |
+            ${{ runner.os }}-spm-${{ matrix.platform }}-
+      - name: xcodebuild build
+        run: |
+          xcodebuild build \
+            -scheme SwiftAIHub \
+            -destination '${{ matrix.destination }}' \
+            -skipPackagePluginValidation \
+            -skipMacroValidation \
+            CODE_SIGNING_ALLOWED=NO
