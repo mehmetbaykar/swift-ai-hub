@@ -83,7 +83,7 @@ jobs:
       - name: xcodebuild build
         run: |
           xcodebuild build \
-            -scheme SwiftAIHub \
+            -scheme swift-ai-hub \
             -destination '${{ matrix.destination }}' \
             -skipPackagePluginValidation \
             -skipMacroValidation \
