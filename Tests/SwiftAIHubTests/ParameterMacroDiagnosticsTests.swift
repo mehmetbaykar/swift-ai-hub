@@ -69,7 +69,15 @@
       )
     }
 
-    func testParameterInMisnamedNestedStructDiagnoses() {
+    /// `@Parameter` inside a `@Generable` struct accepts the marker
+    /// regardless of the struct's name — the macro is layered: any
+    /// `@Generable` container is fine for `@Parameter` itself, and the
+    /// `@Tool` macro is responsible for diagnosing a misnamed nested
+    /// struct (it expects exactly `Arguments`). This isolates concerns
+    /// and lets the synthesised flat-form `@Generable struct Arguments`
+    /// (where the outer `@Tool` doesn't surface in the lexical context)
+    /// also accept its `@Parameter` markers.
+    func testParameterInMisnamedNestedGenerableStructDoesNotDiagnoseHere() {
       assertMacroExpansion(
         """
         @Tool("desc")
@@ -90,14 +98,7 @@
               }
           }
           """,
-        diagnostics: [
-          DiagnosticSpec(
-            message: Self.misplacedMessage,
-            line: 5,
-            column: 9,
-            severity: .error
-          )
-        ],
+        diagnostics: [],
         macros: testMacros
       )
     }

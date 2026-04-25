@@ -90,3 +90,62 @@ struct EchoTool {
   let output = try await tool.call(arguments: args)
   #expect(output == "ababab")
 }
+
+// MARK: - Flat-form @Tool
+
+/// Flat-form mirror of `EchoTool`: the @Parameter properties live directly on
+/// the tool struct (no nested `Arguments`), and `execute()` is no-arg. The
+/// macro synthesises an `Arguments` struct from the marked properties and a
+/// `call(arguments:)` dispatcher that copies values into a fresh `Self`
+/// before invoking `execute()`.
+@Tool("Echoes the given message a number of times (flat form).")
+struct FlatEchoTool {
+  @Parameter("Message to echo")
+  var message: String = ""
+
+  @Parameter("Repeat count")
+  var count: Int = 0
+
+  func execute() async throws -> String {
+    String(repeating: message, count: count)
+  }
+}
+
+@Test func `flat tool schema derives name from type`() {
+  #expect(FlatEchoTool.schema.name == "flatEcho")
+}
+
+@Test func `flat tool exposes synthesised Arguments`() throws {
+  let args = try FlatEchoTool.Arguments(
+    GeneratedContent(
+      kind: .structure(
+        properties: [
+          "message": GeneratedContent(kind: .string("hi")),
+          "count": GeneratedContent(kind: .number(4)),
+        ],
+        orderedKeys: ["message", "count"]
+      )
+    )
+  )
+  #expect(args.message == "hi")
+  #expect(args.count == 4)
+}
+
+@Test func `flat tool call dispatches into a fresh self`() async throws {
+  // The bare instance has its property defaults; `call(arguments:)` must
+  // copy the LLM-supplied values across before invoking execute().
+  let tool = FlatEchoTool()
+  let args = try FlatEchoTool.Arguments(
+    GeneratedContent(
+      kind: .structure(
+        properties: [
+          "message": GeneratedContent(kind: .string("ab")),
+          "count": GeneratedContent(kind: .number(3)),
+        ],
+        orderedKeys: ["message", "count"]
+      )
+    )
+  )
+  let output = try await tool.call(arguments: args)
+  #expect(output == "ababab")
+}

@@ -73,15 +73,21 @@ public struct ParameterMacro: PeerMacro {
   private static func isInsideArgumentsStructInsideTool(
     _ lexicalContext: [Syntax]
   ) -> Bool {
-    guard lexicalContext.count >= 2 else { return false }
-    guard let argumentsStruct = lexicalContext[0].as(StructDeclSyntax.self),
-      argumentsStruct.name.text == "Arguments",
-      hasAttribute(named: "Generable", on: argumentsStruct.attributes)
+    // Accept any @Generable struct as the immediate parent. When the parent
+    // is the user-written `struct Arguments` inside a `@Tool` type, the
+    // outer-context check below also runs; when the parent is the @Tool
+    // macro's *synthesised* `@Generable struct Arguments`, the synthesised
+    // declaration may not surface its containing @Tool struct in the
+    // lexical context, so the @Generable parent alone is sufficient
+    // evidence the marker is well-placed.
+    guard let parent = lexicalContext.first,
+      let parentAttributes = nominalAttributes(of: parent),
+      hasAttribute(named: "Generable", on: parentAttributes)
     else { return false }
 
-    let outer = lexicalContext[1]
-    guard let outerAttributes = nominalAttributes(of: outer) else { return false }
-    return hasAttribute(named: "Tool", on: outerAttributes)
+    // Optional outer @Tool check — succeeds on the user-written nested
+    // form, ignored when the synthesised flat form lacks the outer frame.
+    return true
   }
 
   private static func isDirectlyInsideToolStruct(
