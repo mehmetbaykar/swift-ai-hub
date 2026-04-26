@@ -20,7 +20,7 @@ print(reply.content)
 Add to your `Package.swift`:
 
 ```swift
-.package(url: "https://github.com/mehmetbaykar/swift-ai-hub", from: "0.6.0"),
+.package(url: "https://github.com/mehmetbaykar/swift-ai-hub", from: "0.6.1"),
 ```
 
 ```swift
@@ -43,7 +43,7 @@ Declare a tool as a struct, hand it to the session, let the loop run:
 ```swift
 @Tool("Get weather for a location")
 struct WeatherTool {
-  @Parameter("City or coordinates") var location: String = ""
+  @Parameter("City or coordinates") var location: String
 
   func execute() async throws -> String {
     "Weather in \(location): 22°C, sunny"
