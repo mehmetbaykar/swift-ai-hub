@@ -345,9 +345,10 @@ public struct AnthropicLanguageModel: LanguageModel {
   ) async throws -> LanguageModelSession.Response<Content> where Content: Generable {
     let url = baseURL.appendingPathComponent("v1/messages")
     let headers = buildHeaders()
+    let resolvedTools = try await session.resolvedTools()
 
     // Convert available tools to Anthropic format
-    let anthropicTools: [AnthropicTool] = try session.tools.map { tool in
+    let anthropicTools: [AnthropicTool] = try resolvedTools.map { tool in
       try convertToolToAnthropicFormat(tool)
     }
 
@@ -393,7 +394,11 @@ public struct AnthropicLanguageModel: LanguageModel {
         }
         round += 1
         messages.append(AnthropicMessage(role: .assistant, content: message.content))
-        let resolution = try await resolveToolUses(toolUses, session: session)
+        let resolution = try await resolveToolUses(
+          toolUses,
+          session: session,
+          resolvedTools: resolvedTools
+        )
         switch resolution {
         case .stop(let calls):
           if !calls.isEmpty {
@@ -475,9 +480,10 @@ public struct AnthropicLanguageModel: LanguageModel {
         let task = Task { @Sendable in
           do {
             let headers = buildHeaders()
+            let resolvedTools = try await session.resolvedTools()
 
             // Convert available tools to Anthropic format
-            let anthropicTools: [AnthropicTool] = try session.tools.map { tool in
+            let anthropicTools: [AnthropicTool] = try resolvedTools.map { tool in
               try convertToolToAnthropicFormat(tool)
             }
 
@@ -588,7 +594,11 @@ public struct AnthropicLanguageModel: LanguageModel {
                       content: toolUses.map { AnthropicContent.toolUse($0) }
                     )
                   )
-                  let resolution = try await resolveToolUses(toolUses, session: session)
+                  let resolution = try await resolveToolUses(
+                    toolUses,
+                    session: session,
+                    resolvedTools: resolvedTools
+                  )
                   switch resolution {
                   case .stop:
                     continuation.finish()
@@ -797,12 +807,13 @@ private func convertSchemaToAnthropicFormat(_ schema: GenerationSchema) throws -
 
 private func resolveToolUses(
   _ toolUses: [AnthropicToolUse],
-  session: LanguageModelSession
+  session: LanguageModelSession,
+  resolvedTools: [any Tool]
 ) async throws -> ToolResolutionOutcome {
   if toolUses.isEmpty { return .invocations([]) }
 
   var toolsByName: [String: any Tool] = [:]
-  for tool in session.tools {
+  for tool in resolvedTools {
     if toolsByName[tool.name] == nil {
       toolsByName[tool.name] = tool
     }

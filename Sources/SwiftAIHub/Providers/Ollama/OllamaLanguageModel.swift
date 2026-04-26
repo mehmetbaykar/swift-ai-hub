@@ -83,11 +83,12 @@ public struct OllamaLanguageModel: LanguageModel {
   ) async throws -> LanguageModelSession.Response<Content> where Content: Generable {
     let userSegments = extractPromptSegments(from: session, fallbackText: prompt.description)
     let (ollamaText, ollamaImages) = convertSegmentsToOllama(userSegments)
+    let resolvedTools = try await session.resolvedTools()
     var messages = [
       OllamaMessage(role: .user, content: ollamaText)
     ]
     let ollamaOptions = convertOptions(options)
-    let ollamaTools = try session.tools.map { tool in
+    let ollamaTools = try resolvedTools.map { tool in
       try convertToolToOllamaFormat(tool)
     }
     let ollamaFormat: JSONValue?
@@ -128,7 +129,11 @@ public struct OllamaLanguageModel: LanguageModel {
         round += 1
         messages.append(
           OllamaMessage(role: .assistant, content: chatResponse.message.content ?? ""))
-        let resolution = try await resolveToolCalls(toolCalls, session: session)
+        let resolution = try await resolveToolCalls(
+          toolCalls,
+          session: session,
+          resolvedTools: resolvedTools
+        )
         switch resolution {
         case .stop(let calls):
           if !calls.isEmpty {
@@ -196,7 +201,8 @@ public struct OllamaLanguageModel: LanguageModel {
         AsyncThrowingStream { continuation in
           let task = Task {
             do {
-              let ollamaTools = try session.tools.map { tool in
+              let resolvedTools = try await session.resolvedTools()
+              let ollamaTools = try resolvedTools.map { tool in
                 try convertToolToOllamaFormat(tool)
               }
               let ollamaFormat: JSONValue?
@@ -300,7 +306,11 @@ public struct OllamaLanguageModel: LanguageModel {
 
                 messages.append(
                   OllamaMessage(role: .assistant, content: assistantTextThisRound))
-                let resolution = try await resolveToolCalls(collectedToolCalls, session: session)
+                let resolution = try await resolveToolCalls(
+                  collectedToolCalls,
+                  session: session,
+                  resolvedTools: resolvedTools
+                )
                 switch resolution {
                 case .stop:
                   continuation.finish()
@@ -344,14 +354,15 @@ private enum ToolResolutionOutcome {
 
 private func resolveToolCalls(
   _ toolCalls: [OllamaToolCall],
-  session: LanguageModelSession
+  session: LanguageModelSession,
+  resolvedTools: [any Tool]
 ) async throws -> ToolResolutionOutcome {
   if toolCalls.isEmpty {
     return .invocations([])
   }
 
   var toolsByName: [String: any Tool] = [:]
-  for tool in session.tools {
+  for tool in resolvedTools {
     if toolsByName[tool.name] == nil {
       toolsByName[tool.name] = tool
     }

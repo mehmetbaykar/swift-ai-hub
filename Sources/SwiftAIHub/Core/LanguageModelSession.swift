@@ -14,6 +14,7 @@ public final class LanguageModelSession: @unchecked Sendable {
   }
 
   @ObservationIgnored private let state: Locked<State>
+  @ObservationIgnored private let toolResolver: ToolResolver
 
   /// Serializes concurrent `respond()` / `streamResponse()` bodies on the same
   /// session so that only one request at a time mutates the shared transcript.
@@ -23,6 +24,7 @@ public final class LanguageModelSession: @unchecked Sendable {
 
   private let model: any LanguageModel
   public let tools: [any Tool]
+  private let toolSource: (any ToolSource)?
   public let instructions: Instructions?
 
   /// A delegate that observes and controls tool execution.
@@ -57,12 +59,45 @@ public final class LanguageModelSession: @unchecked Sendable {
 
   public convenience init(
     model: any LanguageModel,
+    tools: any ToolSource,
+    @InstructionsBuilder instructions: () throws -> Instructions
+  ) rethrows {
+    try self.init(
+      model: model,
+      tools: tools,
+      instructions: instructions(),
+      toolExecutionDelegate: nil,
+      maxToolCallRounds: 8,
+      toolRetryPolicy: .disabled,
+      missingToolPolicy: .throwError
+    )
+  }
+
+  public convenience init(
+    model: any LanguageModel,
     tools: [any Tool] = [],
     instructions: String
   ) {
     self.init(
       model: model,
       tools: tools,
+      instructions: Instructions(instructions),
+      transcript: Transcript(),
+      toolExecutionDelegate: nil,
+      maxToolCallRounds: 8,
+      toolRetryPolicy: .disabled,
+      missingToolPolicy: .throwError
+    )
+  }
+
+  public convenience init(
+    model: any LanguageModel,
+    tools: any ToolSource,
+    instructions: String
+  ) {
+    self.init(
+      model: model,
+      toolSource: tools,
       instructions: Instructions(instructions),
       transcript: Transcript(),
       toolExecutionDelegate: nil,
@@ -95,6 +130,27 @@ public final class LanguageModelSession: @unchecked Sendable {
 
   public convenience init(
     model: any LanguageModel,
+    tools: any ToolSource,
+    instructions: Instructions? = nil,
+    toolExecutionDelegate: (any ToolExecutionDelegate)? = nil,
+    maxToolCallRounds: Int = 8,
+    toolRetryPolicy: RetryPolicy = .disabled,
+    missingToolPolicy: MissingToolPolicy = .throwError
+  ) {
+    self.init(
+      model: model,
+      toolSource: tools,
+      instructions: instructions,
+      transcript: Transcript(),
+      toolExecutionDelegate: toolExecutionDelegate,
+      maxToolCallRounds: maxToolCallRounds,
+      toolRetryPolicy: toolRetryPolicy,
+      missingToolPolicy: missingToolPolicy
+    )
+  }
+
+  public convenience init(
+    model: any LanguageModel,
     tools: [any Tool] = [],
     transcript: Transcript,
     toolExecutionDelegate: (any ToolExecutionDelegate)? = nil,
@@ -105,6 +161,27 @@ public final class LanguageModelSession: @unchecked Sendable {
     self.init(
       model: model,
       tools: tools,
+      instructions: nil,
+      transcript: transcript,
+      toolExecutionDelegate: toolExecutionDelegate,
+      maxToolCallRounds: maxToolCallRounds,
+      toolRetryPolicy: toolRetryPolicy,
+      missingToolPolicy: missingToolPolicy
+    )
+  }
+
+  public convenience init(
+    model: any LanguageModel,
+    tools: any ToolSource,
+    transcript: Transcript,
+    toolExecutionDelegate: (any ToolExecutionDelegate)? = nil,
+    maxToolCallRounds: Int = 8,
+    toolRetryPolicy: RetryPolicy = .disabled,
+    missingToolPolicy: MissingToolPolicy = .throwError
+  ) {
+    self.init(
+      model: model,
+      toolSource: tools,
       instructions: nil,
       transcript: transcript,
       toolExecutionDelegate: toolExecutionDelegate,
@@ -126,6 +203,8 @@ public final class LanguageModelSession: @unchecked Sendable {
   ) {
     self.model = model
     self.tools = tools
+    self.toolSource = nil
+    self.toolResolver = ToolResolver(initialTools: tools, source: nil)
     self.instructions = instructions
     self.toolExecutionDelegate = toolExecutionDelegate
     self.maxToolCallRounds = maxToolCallRounds
@@ -156,6 +235,51 @@ public final class LanguageModelSession: @unchecked Sendable {
     }
 
     self.state = .init(.init(finalTranscript))
+  }
+
+  private init(
+    model: any LanguageModel,
+    toolSource: any ToolSource,
+    instructions: Instructions?,
+    transcript: Transcript,
+    toolExecutionDelegate: (any ToolExecutionDelegate)?,
+    maxToolCallRounds: Int,
+    toolRetryPolicy: RetryPolicy = .disabled,
+    missingToolPolicy: MissingToolPolicy = .throwError
+  ) {
+    self.model = model
+    self.tools = []
+    self.toolSource = toolSource
+    self.toolResolver = ToolResolver(initialTools: [], source: toolSource)
+    self.instructions = instructions
+    self.toolExecutionDelegate = toolExecutionDelegate
+    self.maxToolCallRounds = maxToolCallRounds
+    self.toolRetryPolicy = toolRetryPolicy
+    self.missingToolPolicy = missingToolPolicy
+
+    var finalTranscript = transcript
+    if let instructions {
+      let hasInstructions =
+        finalTranscript.first.map { entry in
+          if case .instructions = entry { return true } else { return false }
+        } ?? false
+
+      if !hasInstructions {
+        let instructionsEntry = Transcript.Entry.instructions(
+          Transcript.Instructions(
+            segments: [.text(.init(content: instructions.description))],
+            toolDefinitions: []
+          )
+        )
+        finalTranscript.append(instructionsEntry)
+      }
+    }
+
+    self.state = .init(.init(finalTranscript))
+  }
+
+  public func resolvedTools() async throws -> [any Tool] {
+    try await toolResolver.resolve()
   }
 
   public func prewarm(promptPrefix: Prompt? = nil) {
@@ -1074,6 +1198,31 @@ extension LanguageModelSession.ResponseStream: AsyncSequence {
 
 private enum ResponseStreamError: Error {
   case noSnapshots
+}
+
+private actor ToolResolver {
+  private let initialTools: [any Tool]
+  private let source: (any ToolSource)?
+  private var cachedTools: [any Tool]?
+
+  init(initialTools: [any Tool], source: (any ToolSource)?) {
+    self.initialTools = initialTools
+    self.source = source
+    self.cachedTools = source == nil ? initialTools : nil
+  }
+
+  func resolve() async throws -> [any Tool] {
+    if let cachedTools {
+      return cachedTools
+    }
+    guard let source else {
+      cachedTools = initialTools
+      return initialTools
+    }
+    let resolved = try await source.resolveTools()
+    cachedTools = resolved
+    return resolved
+  }
 }
 
 // MARK: -

@@ -246,7 +246,8 @@ public struct HuggingFaceLanguageModel: LanguageModel {
     // HTTP call so we can surface usage / finish_reason / typed HF errors and
     // honor wait_for_model. Everything else delegates to OpenAILanguageModel
     // wrapped in the retry + error-mapping shell.
-    if session.tools.isEmpty, type == String.self {
+    let resolvedTools = try await session.resolvedTools()
+    if resolvedTools.isEmpty, type == String.self {
       let hfOptions = options[custom: HuggingFaceLanguageModel.self]
       let stringResponse = try await runEnhancedStringRespond(
         session: session,

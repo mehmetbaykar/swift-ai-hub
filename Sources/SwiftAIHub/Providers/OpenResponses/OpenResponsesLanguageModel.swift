@@ -402,14 +402,16 @@ public struct OpenResponsesLanguageModel: LanguageModel {
     includeSchemaInPrompt: Bool,
     options: GenerationOptions
   ) async throws -> LanguageModelSession.Response<Content> where Content: Generable {
+    let resolvedTools = try await session.resolvedTools()
     let tools: [OpenResponsesTool]? =
-      session.tools.isEmpty ? nil : session.tools.map { convertToolToOpenResponsesFormat($0) }
+      resolvedTools.isEmpty ? nil : resolvedTools.map { convertToolToOpenResponsesFormat($0) }
     return try await respondWithOpenResponses(
       messages: session.transcript.toOpenResponsesMessages(),
       tools: tools,
       generating: type,
       options: options,
-      session: session
+      session: session,
+      resolvedTools: resolvedTools
     )
   }
 
@@ -420,89 +422,87 @@ public struct OpenResponsesLanguageModel: LanguageModel {
     includeSchemaInPrompt: Bool,
     options: GenerationOptions
   ) -> sending LanguageModelSession.ResponseStream<Content> where Content: Generable {
-    let tools: [OpenResponsesTool]? =
-      session.tools.isEmpty ? nil : session.tools.map { convertToolToOpenResponsesFormat($0) }
     let url = baseURL.appendingPathComponent("responses")
     let stream:
       AsyncThrowingStream<LanguageModelSession.ResponseStream<Content>.Snapshot, any Error> = .init
       {
         continuation in
-        do {
-          let params = try OpenResponsesAPI.createRequestBody(
-            model: model,
-            messages: session.transcript.toOpenResponsesMessages(),
-            tools: tools,
-            generating: type,
-            options: options,
-            stream: true
-          )
-          let task = Task { @Sendable in
-            do {
-              let body = try JSONEncoder().encode(params)
-              let events: AsyncThrowingStream<OpenResponsesStreamEvent, any Error> =
-                httpSession.fetchEventStream(
-                  .post,
-                  url: url,
-                  headers: ["Authorization": "Bearer \(tokenProvider())"],
-                  body: body
-                )
-              var accumulatedText = ""
-              var accumulatedThinking = ""
-              for try await event in events {
-                switch event {
-                case .outputTextDelta(let delta):
-                  accumulatedText += delta
-                  var raw: GeneratedContent
-                  let content: Content.PartiallyGenerated?
-                  if type == String.self {
-                    raw = GeneratedContent(accumulatedText)
-                    content = (accumulatedText as! Content).asPartiallyGenerated()
-                  } else {
-                    raw =
-                      (try? GeneratedContent(json: accumulatedText))
-                      ?? GeneratedContent(accumulatedText)
-                    content = (try? type.init(raw))?.asPartiallyGenerated()
-                  }
-                  if let content {
-                    continuation.yield(
-                      .init(content: content, rawContent: raw, thinking: accumulatedThinking))
-                  }
-                case .reasoningDelta(let delta):
-                  accumulatedThinking += delta
-                  let raw: GeneratedContent
-                  let content: Content.PartiallyGenerated?
-                  if type == String.self {
-                    raw = GeneratedContent(accumulatedText)
-                    content = (accumulatedText as! Content).asPartiallyGenerated()
-                  } else {
-                    raw =
-                      (try? GeneratedContent(json: accumulatedText))
-                      ?? GeneratedContent(accumulatedText)
-                    content = (try? type.init(raw))?.asPartiallyGenerated()
-                  }
-                  if let content {
-                    continuation.yield(
-                      .init(content: content, rawContent: raw, thinking: accumulatedThinking))
-                  }
-                case .completed:
-                  continuation.finish()
-                  return
-                case .failed:
-                  continuation.finish(throwing: OpenResponsesLanguageModelError.streamFailed)
-                  return
-                case .ignored:
-                  break
+        let task = Task { @Sendable in
+          do {
+            let resolvedTools = try await session.resolvedTools()
+            let tools: [OpenResponsesTool]? =
+              resolvedTools.isEmpty
+              ? nil : resolvedTools.map { convertToolToOpenResponsesFormat($0) }
+            let params = try OpenResponsesAPI.createRequestBody(
+              model: model,
+              messages: session.transcript.toOpenResponsesMessages(),
+              tools: tools,
+              generating: type,
+              options: options,
+              stream: true
+            )
+            let body = try JSONEncoder().encode(params)
+            let events: AsyncThrowingStream<OpenResponsesStreamEvent, any Error> =
+              httpSession.fetchEventStream(
+                .post,
+                url: url,
+                headers: ["Authorization": "Bearer \(tokenProvider())"],
+                body: body
+              )
+            var accumulatedText = ""
+            var accumulatedThinking = ""
+            for try await event in events {
+              switch event {
+              case .outputTextDelta(let delta):
+                accumulatedText += delta
+                var raw: GeneratedContent
+                let content: Content.PartiallyGenerated?
+                if type == String.self {
+                  raw = GeneratedContent(accumulatedText)
+                  content = (accumulatedText as! Content).asPartiallyGenerated()
+                } else {
+                  raw =
+                    (try? GeneratedContent(json: accumulatedText))
+                    ?? GeneratedContent(accumulatedText)
+                  content = (try? type.init(raw))?.asPartiallyGenerated()
                 }
+                if let content {
+                  continuation.yield(
+                    .init(content: content, rawContent: raw, thinking: accumulatedThinking))
+                }
+              case .reasoningDelta(let delta):
+                accumulatedThinking += delta
+                let raw: GeneratedContent
+                let content: Content.PartiallyGenerated?
+                if type == String.self {
+                  raw = GeneratedContent(accumulatedText)
+                  content = (accumulatedText as! Content).asPartiallyGenerated()
+                } else {
+                  raw =
+                    (try? GeneratedContent(json: accumulatedText))
+                    ?? GeneratedContent(accumulatedText)
+                  content = (try? type.init(raw))?.asPartiallyGenerated()
+                }
+                if let content {
+                  continuation.yield(
+                    .init(content: content, rawContent: raw, thinking: accumulatedThinking))
+                }
+              case .completed:
+                continuation.finish()
+                return
+              case .failed:
+                continuation.finish(throwing: OpenResponsesLanguageModelError.streamFailed)
+                return
+              case .ignored:
+                break
               }
-              continuation.finish()
-            } catch {
-              continuation.finish(throwing: error)
             }
+            continuation.finish()
+          } catch {
+            continuation.finish(throwing: error)
           }
-          continuation.onTermination = { _ in task.cancel() }
-        } catch {
-          continuation.finish(throwing: error)
         }
+        continuation.onTermination = { _ in task.cancel() }
       }
     return LanguageModelSession.ResponseStream(stream: stream)
   }
@@ -513,7 +513,8 @@ public struct OpenResponsesLanguageModel: LanguageModel {
     tools: [OpenResponsesTool]?,
     generating type: Content.Type,
     options: GenerationOptions,
-    session: LanguageModelSession
+    session: LanguageModelSession,
+    resolvedTools: [any Tool]
   ) async throws -> LanguageModelSession.Response<Content> where Content: Generable {
     var entries: [Transcript.Entry] = []
     var text = ""
@@ -562,7 +563,11 @@ public struct OpenResponsesLanguageModel: LanguageModel {
             messages.append(OpenResponsesMessage(role: .raw(rawContent: item), content: .text("")))
           }
         }
-        let resolution = try await resolveToolCalls(toolCalls, session: session)
+        let resolution = try await resolveToolCalls(
+          toolCalls,
+          session: session,
+          resolvedTools: resolvedTools
+        )
         switch resolution {
         case .stop(let calls):
           if !calls.isEmpty {
@@ -1139,11 +1144,12 @@ private enum OpenResponsesToolResolutionOutcome: Sendable {
 
 private func resolveToolCalls(
   _ toolCalls: [OpenResponsesToolCall],
-  session: LanguageModelSession
+  session: LanguageModelSession,
+  resolvedTools: [any Tool]
 ) async throws -> OpenResponsesToolResolutionOutcome {
   if toolCalls.isEmpty { return .invocations([]) }
   var byName: [String: any Tool] = [:]
-  for t in session.tools { if byName[t.name] == nil { byName[t.name] = t } }
+  for t in resolvedTools { if byName[t.name] == nil { byName[t.name] = t } }
   var transcriptCalls: [Transcript.ToolCall] = []
   for c in toolCalls {
     let args =

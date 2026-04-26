@@ -285,8 +285,9 @@ public struct GeminiLanguageModel: LanguageModel {
       .appendingPathComponent(apiVersion)
       .appendingPathComponent("models/\(model):generateContent")
     let headers = buildHeaders()
+    let resolvedTools = try await session.resolvedTools()
 
-    let geminiTools = try buildTools(from: session.tools, serverTools: effectiveServerTools)
+    let geminiTools = try buildTools(from: resolvedTools, serverTools: effectiveServerTools)
 
     var transcript = session.transcript
     let maxRounds = session.maxToolCallRounds
@@ -329,7 +330,11 @@ public struct GeminiLanguageModel: LanguageModel {
         }
         round += 1
         // Resolve function calls
-        let resolution = try await resolveFunctionCalls(functionCalls, session: session)
+        let resolution = try await resolveFunctionCalls(
+          functionCalls,
+          session: session,
+          resolvedTools: resolvedTools
+        )
         switch resolution {
         case .stop(let calls):
           if !calls.isEmpty {
@@ -415,8 +420,9 @@ public struct GeminiLanguageModel: LanguageModel {
         let task = Task { @Sendable in
           do {
             let headers = buildHeaders()
+            let resolvedTools = try await session.resolvedTools()
 
-            let geminiTools = try buildTools(from: session.tools, serverTools: effectiveServerTools)
+            let geminiTools = try buildTools(from: resolvedTools, serverTools: effectiveServerTools)
 
             var transcript = session.transcript
             let maxRounds = session.maxToolCallRounds
@@ -508,7 +514,10 @@ public struct GeminiLanguageModel: LanguageModel {
               round += 1
 
               let resolution = try await resolveFunctionCalls(
-                pendingFunctionCalls, session: session)
+                pendingFunctionCalls,
+                session: session,
+                resolvedTools: resolvedTools
+              )
               switch resolution {
               case .stop(let calls):
                 if !calls.isEmpty {
@@ -704,12 +713,13 @@ private enum ToolResolutionOutcome {
 
 private func resolveFunctionCalls(
   _ functionCalls: [GeminiFunctionCall],
-  session: LanguageModelSession
+  session: LanguageModelSession,
+  resolvedTools: [any Tool]
 ) async throws -> ToolResolutionOutcome {
   if functionCalls.isEmpty { return .invocations([]) }
 
   var toolsByName: [String: any Tool] = [:]
-  for tool in session.tools {
+  for tool in resolvedTools {
     if toolsByName[tool.name] == nil {
       toolsByName[tool.name] = tool
     }

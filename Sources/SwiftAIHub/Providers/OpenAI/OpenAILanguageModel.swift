@@ -436,12 +436,13 @@ public struct OpenAILanguageModel: LanguageModel {
     includeSchemaInPrompt: Bool,
     options: GenerationOptions
   ) async throws -> LanguageModelSession.Response<Content> where Content: Generable {
+    let resolvedTools = try await session.resolvedTools()
     // Convert tools if any are available in the session
     let openAITools: [OpenAITool]? = {
-      guard !session.tools.isEmpty else { return nil }
+      guard !resolvedTools.isEmpty else { return nil }
       var converted: [OpenAITool] = []
-      converted.reserveCapacity(session.tools.count)
-      for tool in session.tools {
+      converted.reserveCapacity(resolvedTools.count)
+      for tool in resolvedTools {
         converted.append(convertToolToOpenAIFormat(tool))
       }
       return converted
@@ -454,7 +455,8 @@ public struct OpenAILanguageModel: LanguageModel {
         tools: openAITools,
         generating: type,
         options: options,
-        session: session
+        session: session,
+        resolvedTools: resolvedTools
       )
     case .responses:
       return try await respondWithResponses(
@@ -462,7 +464,8 @@ public struct OpenAILanguageModel: LanguageModel {
         tools: openAITools,
         generating: type,
         options: options,
-        session: session
+        session: session,
+        resolvedTools: resolvedTools
       )
     }
   }
@@ -472,7 +475,8 @@ public struct OpenAILanguageModel: LanguageModel {
     tools: [OpenAITool]?,
     generating type: Content.Type,
     options: GenerationOptions,
-    session: LanguageModelSession
+    session: LanguageModelSession,
+    resolvedTools: [any Tool]
   ) async throws -> LanguageModelSession.Response<Content> where Content: Generable {
 
     var entries: [Transcript.Entry] = []
@@ -538,7 +542,11 @@ public struct OpenAILanguageModel: LanguageModel {
         if let value = try? JSONValue(toolCallMessage) {
           messages.append(OpenAIMessage(role: .raw(rawContent: value), content: .text("")))
         }
-        let resolution = try await resolveToolCalls(toolCalls, session: session)
+        let resolution = try await resolveToolCalls(
+          toolCalls,
+          session: session,
+          resolvedTools: resolvedTools
+        )
         switch resolution {
         case .stop(let calls):
           if !calls.isEmpty {
@@ -598,7 +606,8 @@ public struct OpenAILanguageModel: LanguageModel {
     tools: [OpenAITool]?,
     generating type: Content.Type,
     options: GenerationOptions,
-    session: LanguageModelSession
+    session: LanguageModelSession,
+    resolvedTools: [any Tool]
   ) async throws -> LanguageModelSession.Response<Content> where Content: Generable {
     var entries: [Transcript.Entry] = []
     var text = ""
@@ -653,7 +662,11 @@ public struct OpenAILanguageModel: LanguageModel {
             messages.append(OpenAIMessage(role: .raw(rawContent: msg), content: .text("")))
           }
         }
-        let resolution = try await resolveToolCalls(toolCalls, session: session)
+        let resolution = try await resolveToolCalls(
+          toolCalls,
+          session: session,
+          resolvedTools: resolvedTools
+        )
         switch resolution {
         case .stop(let calls):
           if !calls.isEmpty {
@@ -720,17 +733,6 @@ public struct OpenAILanguageModel: LanguageModel {
     includeSchemaInPrompt: Bool,
     options: GenerationOptions
   ) -> sending LanguageModelSession.ResponseStream<Content> where Content: Generable {
-    // Convert tools if any are available in the session
-    let openAITools: [OpenAITool]? = {
-      guard !session.tools.isEmpty else { return nil }
-      var converted: [OpenAITool] = []
-      converted.reserveCapacity(session.tools.count)
-      for tool in session.tools {
-        converted.append(convertToolToOpenAIFormat(tool))
-      }
-      return converted
-    }()
-
     let useResponsesAPI: Bool
     let url: URL
     switch apiVariant {
@@ -748,6 +750,16 @@ public struct OpenAILanguageModel: LanguageModel {
           continuation in
           let task = Task { @Sendable in
             do {
+              let resolvedTools = try await session.resolvedTools()
+              let openAITools: [OpenAITool]? = {
+                guard !resolvedTools.isEmpty else { return nil }
+                var converted: [OpenAITool] = []
+                converted.reserveCapacity(resolvedTools.count)
+                for tool in resolvedTools {
+                  converted.append(convertToolToOpenAIFormat(tool))
+                }
+                return converted
+              }()
               var messages = session.transcript.toOpenAIMessages()
               let maxRounds = session.maxToolCallRounds
               var round = 0
@@ -923,7 +935,11 @@ public struct OpenAILanguageModel: LanguageModel {
                 // .raw → function_call path in createRequestBody.
                 messages.append(makeAssistantToolCallsRawMessage(toolCalls: toolCalls))
 
-                let resolution = try await resolveToolCalls(toolCalls, session: session)
+                let resolution = try await resolveToolCalls(
+                  toolCalls,
+                  session: session,
+                  resolvedTools: resolvedTools
+                )
                 switch resolution {
                 case .stop:
                   continuation.finish()
@@ -1904,12 +1920,13 @@ private enum OpenAIToolResolutionOutcome {
 
 private func resolveToolCalls(
   _ toolCalls: [OpenAIToolCall],
-  session: LanguageModelSession
+  session: LanguageModelSession,
+  resolvedTools: [any Tool]
 ) async throws -> OpenAIToolResolutionOutcome {
   if toolCalls.isEmpty { return .invocations([]) }
 
   var toolsByName: [String: any Tool] = [:]
-  for tool in session.tools {
+  for tool in resolvedTools {
     if toolsByName[tool.name] == nil {
       toolsByName[tool.name] = tool
     }

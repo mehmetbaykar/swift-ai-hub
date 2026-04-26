@@ -12,7 +12,8 @@ let package = Package(
     .visionOS(.v1),
   ],
   products: [
-    .library(name: "SwiftAIHub", targets: ["SwiftAIHub"])
+    .library(name: "SwiftAIHub", targets: ["SwiftAIHub"]),
+    .library(name: "SwiftAIHubMCP", targets: ["SwiftAIHubMCP"]),
   ],
   traits: [
     .trait(name: "MLX", description: "Enable MLX on-device provider (Apple only)"),
@@ -42,12 +43,23 @@ let package = Package(
     .package(url: "https://github.com/mattt/llama.swift", .upToNextMajor(from: "2.7484.0")),
     .package(url: "https://github.com/mattt/PartialJSONDecoder", from: "1.0.0"),
     .package(url: "https://github.com/swift-server/async-http-client.git", from: "1.24.0"),
+    .package(url: "https://github.com/modelcontextprotocol/swift-sdk", from: "0.12.0"),
     // Test-only: Point-Free swift-macro-testing for snapshot-based macro expansion tests.
     .package(url: "https://github.com/pointfreeco/swift-macro-testing.git", from: "0.6.3"),
   ],
   targets: [
     .macro(
       name: "SwiftAIHubMacros",
+      dependencies: [
+        .product(name: "SwiftSyntax", package: "swift-syntax"),
+        .product(name: "SwiftSyntaxMacros", package: "swift-syntax"),
+        .product(name: "SwiftCompilerPlugin", package: "swift-syntax"),
+        .product(name: "SwiftSyntaxBuilder", package: "swift-syntax"),
+        .product(name: "SwiftDiagnostics", package: "swift-syntax"),
+      ]
+    ),
+    .macro(
+      name: "SwiftAIHubMCPMacros",
       dependencies: [
         .product(name: "SwiftSyntax", package: "swift-syntax"),
         .product(name: "SwiftSyntaxMacros", package: "swift-syntax"),
@@ -119,11 +131,33 @@ let package = Package(
         .define("HUB_USE_ASYNC_HTTP", .when(traits: ["AsyncHTTP"])),
       ]
     ),
+    .target(
+      name: "SwiftAIHubMCP",
+      dependencies: [
+        "SwiftAIHub",
+        "SwiftAIHubMCPMacros",
+        .product(name: "MCP", package: "swift-sdk"),
+        .product(name: "Logging", package: "swift-log"),
+      ]
+    ),
     .testTarget(
       name: "SwiftAIHubTests",
       dependencies: [
         "SwiftAIHub",
         .target(name: "SwiftAIHubMacros", condition: .when(platforms: [.macOS])),
+        .product(
+          name: "SwiftSyntaxMacrosTestSupport", package: "swift-syntax",
+          condition: .when(platforms: [.macOS])),
+        .product(
+          name: "MacroTesting", package: "swift-macro-testing",
+          condition: .when(platforms: [.macOS])),
+      ]
+    ),
+    .testTarget(
+      name: "SwiftAIHubMCPTests",
+      dependencies: [
+        "SwiftAIHubMCP",
+        .target(name: "SwiftAIHubMCPMacros", condition: .when(platforms: [.macOS])),
         .product(
           name: "SwiftSyntaxMacrosTestSupport", package: "swift-syntax",
           condition: .when(platforms: [.macOS])),

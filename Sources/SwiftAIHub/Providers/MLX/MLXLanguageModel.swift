@@ -912,8 +912,8 @@ import Foundation
       GPUMemoryManager.shared.markIdle(scope: id)
     }
 
-    private func mlxToolSpecs(for session: LanguageModelSession) -> [ToolSpec]? {
-      session.tools.isEmpty ? nil : session.tools.map { convertToolToMLXSpec($0) }
+    private func mlxToolSpecs(for tools: [any Tool]) -> [ToolSpec]? {
+      tools.isEmpty ? nil : tools.map { convertToolToMLXSpec($0) }
     }
 
     private func makeUserInput(
@@ -946,6 +946,7 @@ import Foundation
       let context = try await loadContext(modelId: modelId, hub: hub, directory: directory)
       let generationScope = beginGenerationScope()
       defer { endGenerationScope(generationScope) }
+      let resolvedTools = try await session.resolvedTools()
 
       if type != String.self {
         let jsonString = try await generateStructuredJSON(
@@ -967,7 +968,7 @@ import Foundation
         )
       }
 
-      let toolSpecs = mlxToolSpecs(for: session)
+      let toolSpecs = mlxToolSpecs(for: resolvedTools)
 
       // Map AnyLanguageModel GenerationOptions to MLX GenerateParameters
       let generateParameters = toGenerateParameters(options)
@@ -1060,7 +1061,11 @@ import Foundation
           }
           previousToolCallSignature = signature
 
-          let resolution = try await resolveToolCalls(collectedToolCalls, session: session)
+          let resolution = try await resolveToolCalls(
+            collectedToolCalls,
+            session: session,
+            resolvedTools: resolvedTools
+          )
           switch resolution {
           case .stop(let calls):
             if !calls.isEmpty {
@@ -1180,7 +1185,8 @@ import Foundation
                   session: session,
                   fallbackPrompt: prompt.description
                 )
-                let toolSpecs = mlxToolSpecs(for: session)
+                let resolvedTools = try await session.resolvedTools()
+                let toolSpecs = mlxToolSpecs(for: resolvedTools)
                 let maxRounds = session.maxToolCallRounds
                 var round = 0
                 var previousToolCallSignature: String?
@@ -1272,7 +1278,11 @@ import Foundation
                   }
                   previousToolCallSignature = signature
 
-                  let resolution = try await resolveToolCalls(collectedToolCalls, session: session)
+                  let resolution = try await resolveToolCalls(
+                    collectedToolCalls,
+                    session: session,
+                    resolvedTools: resolvedTools
+                  )
                   switch resolution {
                   case .stop:
                     finishScope()
@@ -1337,7 +1347,8 @@ import Foundation
             return
           }
 
-          let toolSpecs = mlxToolSpecs(for: session)
+          let resolvedTools = try await session.resolvedTools()
+          let toolSpecs = mlxToolSpecs(for: resolvedTools)
 
           let params = toGenerateParameters(.init())
           let newCache = context.model.newCache(parameters: params)
@@ -1607,12 +1618,13 @@ import Foundation
 
   private func resolveToolCalls(
     _ toolCalls: [MLXLMCommon.ToolCall],
-    session: LanguageModelSession
+    session: LanguageModelSession,
+    resolvedTools: [any Tool]
   ) async throws -> ToolResolutionOutcome {
     if toolCalls.isEmpty { return .invocations([]) }
 
     var toolsByName: [String: any Tool] = [:]
-    for tool in session.tools {
+    for tool in resolvedTools {
       if toolsByName[tool.name] == nil {
         toolsByName[tool.name] = tool
       }

@@ -107,7 +107,7 @@
       if let chatTemplateHandler = chatTemplateHandler {
         // Use chat template handler with optional tools
         let messages = chatTemplateHandler(session.instructions, prompt)
-        let toolSpecs: [ToolSpec]? = toolsHandler?(session.tools)
+        let toolSpecs: [ToolSpec]? = try await toolsHandler?(session.resolvedTools())
         tokens = try tokenizer.applyChatTemplate(messages: messages, tools: toolSpecs)
       } else {
         // Fall back to direct tokenizer encoding
@@ -194,7 +194,7 @@
                 if let chatTemplateHandler = chatTemplateHandler {
                   // Use chat template handler with optional tools
                   let messages = chatTemplateHandler(session.instructions, prompt)
-                  let toolSpecs: [ToolSpec]? = toolsHandler?(session.tools)
+                  let toolSpecs: [ToolSpec]? = try await toolsHandler?(session.resolvedTools())
                   tokens = try tokenizer.applyChatTemplate(messages: messages, tools: toolSpecs)
                 } else {
                   // Fall back to direct tokenizer encoding
@@ -441,7 +441,7 @@
             messages.insert(["role": "system", "content": schemaPrompt], at: 0)
           }
         }
-        let toolSpecs: [ToolSpec]? = toolsHandler?(session.tools)
+        let toolSpecs: [ToolSpec]? = try await toolsHandler?(session.resolvedTools())
         return try tokenizer.applyChatTemplate(messages: messages, tools: toolSpecs)
       }
 
