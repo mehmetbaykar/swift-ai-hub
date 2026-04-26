@@ -67,7 +67,7 @@ func redactSensitiveHeaders(_ raw: String) -> String {
 #if canImport(FoundationNetworking)
   /// Serializes Linux URLSession operations to mitigate a FoundationNetworking race.
   ///
-  /// AnyLanguageModel performs many concurrent HTTP requests across model implementations.
+  /// SwiftAIHub performs many concurrent HTTP requests across model implementations.
   /// On Linux, `FoundationNetworking` routes `URLSession` through a shared
   /// `_MultiHandle`, which has a known thread-safety bug that can crash under
   /// concurrent access (`URLSession._MultiHandle.endOperation(for:)`).

@@ -80,7 +80,7 @@ public protocol Tool<Arguments, Output>: Sendable {
   func call(arguments: Self.Arguments) async throws -> Self.Output
 
   /// Produces the transcript segments that represent this tool's output for a
-  /// given MCP-supplied argument payload.
+  /// given tool-call argument payload.
   ///
   /// The default implementation decodes `Arguments`, invokes ``call(arguments:)``,
   /// and wraps the result as a single `.text` or `.structure` segment. Tools

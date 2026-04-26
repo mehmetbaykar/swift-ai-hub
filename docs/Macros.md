@@ -14,27 +14,46 @@ the schema.
 Implementation: `Sources/SwiftAIHubMacros/ToolMacro.swift`.
 
 Contract: applied to a `struct`, it adds `Tool, Sendable` conformance,
-synthesises a `ToolSchema`, and exposes the user's `execute(_:)` method
-through a `call(arguments:)` dispatcher.
+synthesises a `ToolSchema`, and exposes the user's `execute()` or
+`execute(_:)` method through a `call(arguments:)` dispatcher.
 
 ### Rules
 
-- The struct must declare a nested `@Generable struct Arguments`;
-  `@Tool` emits `Arguments.generationSchema` and
-  `call(arguments: Arguments)`.
+- The tool can use either form:
+  - Flat form: `@Parameter` stored properties directly on the tool struct,
+    plus `func execute() async throws -> Output`.
+  - Nested form: a nested `@Generable struct Arguments`, plus
+    `func execute(_ arguments: Arguments) async throws -> Output`.
+- In flat form, the macro synthesizes the nested `Arguments` type from the
+  `@Parameter` properties.
 - Every property `@Generable` extracts from `Arguments` becomes part of the
   generated schema; `@Parameter` or `@Guide` supplies per-property
   descriptions and constraints.
-- The struct must declare
-  `func execute(_ arguments: Arguments) async throws -> Output`. The macro
-  infers `Output` from that return type; the emitted `Tool` conformance then
-  requires it to satisfy `Tool.Output`'s `PromptRepresentable` bound.
+- The macro infers `Output` from the `execute` return type; the emitted `Tool`
+  conformance then requires it to satisfy `Tool.Output`'s
+  `PromptRepresentable` bound.
 - Plain stored properties on the tool struct (no `@Parameter` / `@Guide`)
   are treated as init-injected dependencies and stay invisible to the model.
 - The description must be a string literal; the macro errors when it cannot
   extract one.
 
-### Canonical example
+### Flat example
+
+```swift
+import SwiftAIHub
+
+@Tool("Echo a city")
+public struct CityTool {
+  @Parameter("The city name")
+  public var location: String = ""
+
+  public func execute() async throws -> String {
+    location
+  }
+}
+```
+
+### Nested example
 
 ```swift
 import SwiftAIHub
@@ -71,7 +90,7 @@ public struct WeatherTool {
 }
 ```
 
-### Approximate expansion
+### Approximate nested-form expansion
 
 ```swift
 public struct WeatherTool {
@@ -106,8 +125,8 @@ extension WeatherTool: SwiftAIHub.Tool, Swift.Sendable {}
 |---|---|
 | `name` | the struct name with a trailing `Tool` stripped and the first letter lowercased. `WeatherTool` to `weather`, `Search` to `search`. |
 | `description` | the macro's string argument. |
-| `parameters` schema | `Arguments.generationSchema`. |
-| `Output` | inferred from the user's `execute(_:)` return type. |
+| `parameters` schema | `Arguments.generationSchema`, synthesized from flat `@Parameter` properties when needed. |
+| `Output` | inferred from the user's `execute()` or `execute(_:)` return type. |
 | `init()` | synthesised only when the user did not write an init *and* the struct has no stored instance properties without default values. |
 
 ## `@Parameter("description")`
@@ -153,11 +172,10 @@ public struct CityTool {
 }
 ```
 
-`@Parameter` exists for readability at the tool boundary. The macro
-diagnoses contexts whose immediate lexical parent is not a
-`@Generable struct Arguments` nested inside a type annotated with `@Tool`.
-Inside that context, `@Generable` consumes the attribute only on properties
-it extracts into the schema.
+`@Parameter` exists for readability at the tool boundary. It is valid either
+directly on stored properties of a `@Tool` struct using the flat form, or inside
+a nested `@Generable struct Arguments` in the nested form. In both cases it
+provides the schema description for the generated argument field.
 
 ## `@Generable`
 
@@ -262,8 +280,11 @@ Current gaps:
 
 ## Practical rule of thumb
 
-- Every tool: `@Tool` on the struct, `@Generable` on its nested
-  `Arguments`, `@Parameter` (or `@Guide`) on each argument property.
+- Simple tools: `@Tool` on the struct, `@Parameter` on each model-visible
+  stored property, and a no-argument `execute()`.
+- Tools with a reusable argument payload: `@Tool` on the struct, `@Generable`
+  on nested `Arguments`, `@Parameter` (or `@Guide`) on each argument property,
+  and `execute(_ arguments:)`.
 - Every nested type referenced from `Arguments`, and every structured
   `execute` return value you want serialized as generated content:
   `@Generable`.

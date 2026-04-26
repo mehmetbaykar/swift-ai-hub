@@ -1,7 +1,7 @@
 /// A synchronous handle to tools that may need asynchronous preparation before use.
 ///
-/// Plain arrays of tools resolve immediately. Remote providers can conform to this protocol
-/// and perform network discovery the first time a session needs concrete tools.
+/// Plain arrays of tools resolve immediately. Deferred sources can conform to this protocol
+/// and perform preparation the first time a session needs concrete tools.
 public protocol ToolSource: Sendable {
   func resolveTools() async throws -> [any Tool]
 }
@@ -12,7 +12,7 @@ extension Array: ToolSource where Element == any Tool {
   }
 }
 
-/// A composable collection of local and provider-backed tools.
+/// A composable collection of immediate and deferred tools.
 public struct ToolBundle: ToolSource {
   private let resolver: @Sendable () async throws -> [any Tool]
 

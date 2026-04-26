@@ -112,6 +112,17 @@ for try await snapshot in stream {
 Production HTTP on Linux can route through `AsyncHTTPClient` by enabling the
 `AsyncHTTP` trait.
 
+## Optional MCP Tools
+
+Add the `SwiftAIHubMCP` product when you want a remote MCP server to appear as
+a deferred `ToolSource` for `LanguageModelSession`. The core `SwiftAIHub`
+product stays MCP-free; MCP transports and value mapping live in the optional
+module.
+
+```swift
+.product(name: "SwiftAIHubMCP", package: "swift-ai-hub")
+```
+
 ## Documentation
 
 - [docs/Overview.md](docs/Overview.md) — what's in the package, how the pieces fit

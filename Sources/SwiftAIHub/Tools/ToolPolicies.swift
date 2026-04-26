@@ -10,9 +10,8 @@ import Foundation
 /// Conduit's `ToolExecutor.RetryPolicy` but adds a caller-supplied predicate
 /// so clients can retry on arbitrary error shapes.
 ///
-/// - Note: This API is exclusive to AnyLanguageModel
-///   and using it means your code is no longer drop-in compatible
-///   with the Foundation Models framework.
+/// - Note: This policy is specific to SwiftAIHub's tool-call loop.
+///   FoundationModels runs its own internal loop and cannot honor it.
 public struct RetryPolicy: Sendable {
   /// Backoff strategy between retry attempts.
   public enum Backoff: Sendable, Hashable {
@@ -87,9 +86,8 @@ public struct RetryPolicy: Sendable {
 /// Strategy for handling tool calls that name a tool not registered on the
 /// session.
 ///
-/// - Note: This API is exclusive to AnyLanguageModel
-///   and using it means your code is no longer drop-in compatible
-///   with the Foundation Models framework.
+/// - Note: This policy is specific to SwiftAIHub's tool-call loop.
+///   FoundationModels runs its own internal loop and cannot honor it.
 public enum MissingToolPolicy: Sendable {
   /// Throw an error aborting the tool-call loop when the tool is unknown.
   case throwError

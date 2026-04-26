@@ -59,10 +59,25 @@ _ = replacementSession
 
 ## The `@Tool` macro
 
-`@Tool` is attached to a struct with a nested `@Generable struct
-Arguments` and an `execute(_ arguments: Arguments)` method. The macro
-emits the `Tool` conformance, a static `schema: ToolSchema`, and a
+`@Tool` is attached to a struct that exposes model-visible arguments either
+as flat `@Parameter` stored properties with `execute()`, or as a nested
+`@Generable struct Arguments` with `execute(_ arguments: Arguments)`. The
+macro emits the `Tool` conformance, a static `schema: ToolSchema`, and a
 `call(arguments:)` dispatcher that forwards to `execute`.
+
+```swift
+@Tool("Look up the current weather for a city.")
+struct WeatherTool {
+  @Parameter("City name, e.g. 'Berlin'.")
+  var city: String = ""
+
+  func execute() async throws -> String {
+    // ... fetch and return a summary string ...
+  }
+}
+```
+
+For larger argument shapes, use the nested form:
 
 ```swift
 @Tool("Look up the current weather for a city.")

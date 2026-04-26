@@ -1,28 +1,21 @@
 // swift-ai-hub — Apache-2.0
-// Dual-use tool type-level test (task 9).
-// Proves the same Tool struct can live in session.tools. A full runtime loop
-// requires the @Tool macro to emit ALM-compatible conformance; tracked as
-// follow-up once the macro/runtime adapter lands.
+// Dual-use tool type-level test. Proves a macro-authored Tool can live in
+// session.tools and be called directly.
 
 import Foundation
 import Testing
 
 @testable import SwiftAIHub
 
-@Generable
-struct WeatherArgs {
-  @Guide(description: "IANA timezone")
-  var timezone: String
-}
+@Tool("Return the current weather for a given timezone.")
+struct WeatherTool {
+  @Generable
+  struct Arguments {
+    @Guide(description: "IANA timezone")
+    var timezone: String
+  }
 
-struct WeatherTool: Tool {
-  typealias Arguments = WeatherArgs
-  typealias Output = String
-
-  let name = "weather"
-  let description = "Return the current weather for a given timezone."
-
-  func call(arguments: WeatherArgs) async throws -> String {
+  func execute(_ arguments: Arguments) async throws -> String {
     "sunny in \(arguments.timezone)"
   }
 }
@@ -35,6 +28,6 @@ struct WeatherTool: Tool {
 
 @Test func `tool can be executed directly`() async throws {
   let tool = WeatherTool()
-  let out = try await tool.call(arguments: WeatherArgs(timezone: "Europe/Berlin"))
+  let out = try await tool.call(arguments: WeatherTool.Arguments(timezone: "Europe/Berlin"))
   #expect(out == "sunny in Europe/Berlin")
 }

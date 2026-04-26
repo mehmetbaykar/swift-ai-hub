@@ -32,9 +32,8 @@ public final class LanguageModelSession: @unchecked Sendable {
   /// Set this property to intercept tool calls, provide custom output,
   /// or stop after tool calls are generated.
   ///
-  /// - Note: This property is exclusive to AnyLanguageModel
-  ///   and using it means your code is no longer drop-in compatible
-  ///   with the Foundation Models framework.
+  /// - Note: This property is specific to SwiftAIHub's tool-call loop.
+  ///   FoundationModels runs its own internal loop and cannot honor it.
   @ObservationIgnored public let toolExecutionDelegate: (any ToolExecutionDelegate)?
 
   /// Upper bound on how many tool-call rounds the provider loop may run before

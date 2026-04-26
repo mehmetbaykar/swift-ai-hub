@@ -6,8 +6,10 @@ type lives under `Sources/SwiftAIHub/Core/` or `Sources/SwiftAIHub/Tools/`.
 ## How the pieces fit
 
 A `LanguageModelSession` owns a running `Transcript` and drives a
-`LanguageModel` against an `[any Tool]` array. Each turn appends to the
-transcript and returns a `Response` (or a `ResponseStream` of `Snapshot`s).
+`LanguageModel` against tools. Tools can be passed immediately as `[any Tool]`
+or deferred behind a `ToolSource` that resolves asynchronously when the session
+first needs concrete tools. Each turn appends to the transcript and returns a
+`Response` (or a `ResponseStream` of `Snapshot`s).
 `Response` carries provider-reported `Usage` and `FinishReason` when available.
 `RateLimitInfo` is attached to rate-limit errors when a provider parses matching
 headers. `LanguageModelError` is the umbrella protocol for provider errors that
@@ -93,6 +95,25 @@ public convenience init(
   toolRetryPolicy: RetryPolicy = .disabled,
   missingToolPolicy: MissingToolPolicy = .throwError
 )
+```
+
+Each initializer also has a `tools: any ToolSource` overload with the same
+shape. These overloads keep session construction synchronous while letting
+remote, cached, or otherwise deferred tool collections prepare themselves on
+the first `respond`, `streamResponse`, or explicit `resolvedTools()` call.
+
+```swift
+public convenience init(
+  model: any LanguageModel,
+  tools: any ToolSource,
+  instructions: Instructions? = nil,
+  toolExecutionDelegate: (any ToolExecutionDelegate)? = nil,
+  maxToolCallRounds: Int = 8,
+  toolRetryPolicy: RetryPolicy = .disabled,
+  missingToolPolicy: MissingToolPolicy = .throwError
+)
+
+public func resolvedTools() async throws -> [any Tool]
 ```
 
 The driving methods are `respond` and `streamResponse`. They cover generic
@@ -236,9 +257,41 @@ public protocol Tool<Arguments, Output>: Sendable {
 ```
 
 The `@Tool` macro fills in `name`, `description`, `parameters`, and a
-`call(arguments:)` that forwards to your `execute(_:)`. The default
+`call(arguments:)` that forwards to your `execute()` or `execute(_:)`. Use
+flat `@Parameter` stored properties for simple tools, or a nested
+`@Generable struct Arguments` plus `execute(_ arguments:)` when you want a
+named argument payload type. The default
 `makeOutputSegments(from:)` decodes `Arguments`, calls `call`, and wraps the
 result as a `.text` or `.structure` segment.
+
+## `ToolSource` and `ToolBundle`
+
+`Sources/SwiftAIHub/Tools/ToolSource.swift`.
+
+```swift
+public protocol ToolSource: Sendable {
+  func resolveTools() async throws -> [any Tool]
+}
+
+public struct ToolBundle: ToolSource {
+  public init(_ tools: [any Tool])
+  public init(_ source: any ToolSource)
+  public static func + (lhs: ToolBundle, rhs: ToolBundle) -> ToolBundle
+}
+```
+
+Arrays of tools resolve immediately. `ToolBundle` composes immediate and
+deferred sources so callers can keep ergonomic session initialization:
+
+```swift
+let tools = [WeatherLookupTool()] + remoteTools
+let session = LanguageModelSession(model: model, tools: tools)
+```
+
+Providers call `session.resolvedTools()` to get the cached concrete tools.
+Core SwiftAIHub does not know what a deferred source represents; optional
+modules can provide their own sources without leaking transport details into
+the session API.
 
 ## `Usage` and `FinishReason`
 

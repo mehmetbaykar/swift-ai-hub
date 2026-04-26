@@ -90,17 +90,19 @@
       // caller has configured a non-default hub policy so the silent
       // bypass is visible rather than masking stop/provideOutput
       // decisions or round caps.
-      try Self.rejectUnsupportedHubToolPolicy(for: session)
+      let resolvedTools = try await session.resolvedTools()
+      try Self.rejectUnsupportedHubToolPolicy(for: session, resolvedTools: resolvedTools)
 
       let fmPrompt = prompt.toFoundationModels()
       let fmOptions = options.toFoundationModels()
 
       let fmSession = FoundationModels.LanguageModelSession(
         model: systemModel,
-        tools: session.tools.toFoundationModels(),
+        tools: resolvedTools.toFoundationModels(),
         transcript: session.transcript.toFoundationModels(
           instructions: session.instructions,
-          toolDefinitions: session.tools
+          toolDefinitions:
+            resolvedTools
             .filter(\.includesSchemaInInstructions)
             .map { Transcript.ToolDefinition(tool: $0) }
         )
@@ -177,30 +179,8 @@
       includeSchemaInPrompt: Bool,
       options: GenerationOptions
     ) -> sending LanguageModelSession.ResponseStream<Content> where Content: Generable {
-      // Same bypass guard as the non-streaming respond path — see comment
-      // there for details. Surface the error through the stream instead
-      // of making the call site throw synchronously.
-      if let error = Self.unsupportedHubToolPolicyError(for: session) {
-        return LanguageModelSession.ResponseStream(
-          stream: AsyncThrowingStream { continuation in
-            continuation.finish(throwing: error)
-          }
-        )
-      }
-
       let fmPrompt = prompt.toFoundationModels()
       let fmOptions = options.toFoundationModels()
-
-      let fmSession = FoundationModels.LanguageModelSession(
-        model: systemModel,
-        tools: session.tools.toFoundationModels(),
-        transcript: session.transcript.toFoundationModels(
-          instructions: session.instructions,
-          toolDefinitions: session.tools
-            .filter(\.includesSchemaInInstructions)
-            .map { Transcript.ToolDefinition(tool: $0) }
-        )
-      )
 
       let stream:
         AsyncThrowingStream<LanguageModelSession.ResponseStream<Content>.Snapshot, Error> =
@@ -228,7 +208,9 @@
               }
             }
 
-            func processStringStream() async {
+            func processStringStream(
+              fmSession: FoundationModels.LanguageModelSession
+            ) async {
               let fmStream: FoundationModels.LanguageModelSession.ResponseStream<String> =
                 fmSession.streamResponse(to: fmPrompt, options: fmOptions)
 
@@ -259,7 +241,9 @@
               }
             }
 
-            func processStructuredStream() async {
+            func processStructuredStream(
+              fmSession: FoundationModels.LanguageModelSession
+            ) async {
               let schema = FoundationModels.GenerationSchema(type.generationSchema)
               let partialDecoder = PartialJSONDecoder()
               let fmStream = fmSession.streamResponse(
@@ -364,10 +348,35 @@
             }
 
             let streamingTask: _Concurrency.Task<Void, Never> = _Concurrency.Task(priority: nil) {
-              if type == String.self {
-                await processStringStream()
-              } else {
-                await processStructuredStream()
+              do {
+                let resolvedTools = try await session.resolvedTools()
+                if let error = Self.unsupportedHubToolPolicyError(
+                  for: session,
+                  resolvedTools: resolvedTools
+                ) {
+                  continuation.finish(throwing: error)
+                  return
+                }
+
+                let fmSession = FoundationModels.LanguageModelSession(
+                  model: systemModel,
+                  tools: resolvedTools.toFoundationModels(),
+                  transcript: session.transcript.toFoundationModels(
+                    instructions: session.instructions,
+                    toolDefinitions:
+                      resolvedTools
+                      .filter(\.includesSchemaInInstructions)
+                      .map { Transcript.ToolDefinition(tool: $0) }
+                  )
+                )
+
+                if type == String.self {
+                  await processStringStream(fmSession: fmSession)
+                } else {
+                  await processStructuredStream(fmSession: fmSession)
+                }
+              } catch {
+                continuation.finish(throwing: error)
               }
             }
             continuation.onTermination = { _ in streamingTask.cancel() }
@@ -418,7 +427,7 @@
         switch self {
         case .toolExecutionDelegateWithFoundationModels:
           return
-            "SystemLanguageModel cannot route tool calls through LanguageModelSession.toolExecutionDelegate because FoundationModels.LanguageModelSession runs its own internal tool-call loop. Remove the delegate, clear session.tools, or use a provider that owns its tool loop."
+            "SystemLanguageModel cannot route tool calls through LanguageModelSession.toolExecutionDelegate because FoundationModels.LanguageModelSession runs its own internal tool-call loop. Remove the delegate, clear the session's tools, or use a provider that owns its tool loop."
         case .nonDefaultMaxToolCallRoundsWithFoundationModels(let value):
           return
             "SystemLanguageModel cannot enforce maxToolCallRounds=\(value); FoundationModels runs its own tool-call loop. Use the default cap (8) or switch providers."
@@ -429,9 +438,10 @@
     /// Throws when `session` has a hub tool policy FoundationModels cannot
     /// honor. Called from `respond(...)`.
     fileprivate static func rejectUnsupportedHubToolPolicy(
-      for session: LanguageModelSession
+      for session: LanguageModelSession,
+      resolvedTools: [any Tool]
     ) throws {
-      if let error = unsupportedHubToolPolicyError(for: session) {
+      if let error = unsupportedHubToolPolicyError(for: session, resolvedTools: resolvedTools) {
         throw error
       }
     }
@@ -439,9 +449,10 @@
     /// Returns an error to surface on the stream when `session` has a hub
     /// tool policy FoundationModels cannot honor; returns `nil` otherwise.
     fileprivate static func unsupportedHubToolPolicyError(
-      for session: LanguageModelSession
+      for session: LanguageModelSession,
+      resolvedTools: [any Tool]
     ) -> UnsupportedHubToolPolicyError? {
-      guard !session.tools.isEmpty else { return nil }
+      guard !resolvedTools.isEmpty else { return nil }
       if session.toolExecutionDelegate != nil {
         return .toolExecutionDelegateWithFoundationModels
       }

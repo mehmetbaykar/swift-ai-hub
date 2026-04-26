@@ -11,6 +11,8 @@ import Testing
 @Generable
 struct NoopArgs {}
 
+// Manual conformance keeps this fixture focused on provider loop mechanics
+// rather than macro expansion.
 struct NoopTool: Tool {
   typealias Arguments = NoopArgs
   typealias Output = String

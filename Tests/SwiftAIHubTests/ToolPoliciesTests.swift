@@ -11,6 +11,9 @@ import Testing
 @Generable
 private struct EmptyArgs {}
 
+// These fixtures intentionally use the protocol directly because the tests
+// exercise retry, failure, and concurrent dispatch mechanics around
+// `Tool.call(arguments:)`.
 private actor AttemptCounter {
   private(set) var count = 0
   func bump() { count += 1 }
