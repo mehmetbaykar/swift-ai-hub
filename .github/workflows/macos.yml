@@ -90,7 +90,7 @@ jobs:
       - name: xcodebuild ${{ matrix.action }}
         run: |
           xcodebuild ${{ matrix.action }} \
-            -scheme swift-ai-hub \
+            -scheme swift-ai-hub-Package \
             -destination '${{ matrix.destination }}' \
             -skipPackagePluginValidation \
             -skipMacroValidation \
