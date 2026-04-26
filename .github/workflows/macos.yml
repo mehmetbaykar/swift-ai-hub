@@ -63,16 +63,16 @@ jobs:
         include:
           - platform: iOS
             destination: generic/platform=iOS Simulator
-            action: test
+            action: build-for-testing
           - platform: tvOS
             destination: generic/platform=tvOS Simulator
-            action: test
+            action: build-for-testing
           - platform: visionOS
             destination: generic/platform=visionOS Simulator
             action: build-for-testing
-          # MockURLProtocol does not intercept URLSession on watchOS, so the
-          # provider wire tests fail with NSURLErrorDomain -1003 there. Verify
-          # the test bundle compiles for watchOS without executing it.
+          # GitHub runner simulator inventories vary by image. Verify the test
+          # bundles compile for Apple simulator platforms without depending on
+          # concrete device names or runtimes being installed.
           - platform: watchOS
             destination: generic/platform=watchOS Simulator
             action: build-for-testing
