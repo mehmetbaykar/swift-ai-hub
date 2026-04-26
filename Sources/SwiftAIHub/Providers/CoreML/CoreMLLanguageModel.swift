@@ -396,7 +396,7 @@
       let maxTokens = options.maximumResponseTokens ?? 512
       var generationConfig = toStructuredGenerationConfig(options)
 
-      let promptTokens = try structuredPromptTokens(
+      let promptTokens = try await structuredPromptTokens(
         in: session,
         prompt: prompt,
         schema: schema,
@@ -432,7 +432,7 @@
       prompt: Prompt,
       schema: GenerationSchema,
       includeSchemaInPrompt: Bool
-    ) throws -> [Int] {
+    ) async throws -> [Int] {
       if let chatTemplateHandler = chatTemplateHandler {
         var messages = chatTemplateHandler(session.instructions, prompt)
         if includeSchemaInPrompt {
