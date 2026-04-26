@@ -131,6 +131,33 @@ struct FlatEchoTool {
   #expect(args.count == 4)
 }
 
+/// Flat tool whose @Parameter property has NO Swift default. The macro must
+/// auto-default it to a zero value so `FlatRequiredEcho()` compiles, while
+/// the synthesised @Generable Arguments still treats the property as
+/// required (the schema marks it required because the binding has no
+/// initializer in the syntax tree).
+@Tool("Echo a required message — no Swift default needed.")
+struct FlatRequiredEcho {
+  @Parameter("Required message to echo")
+  var message: String
+
+  func execute() async throws -> String { message }
+}
+
+@Test func `flat tool with required parameter compiles without explicit default`() async throws {
+  let tool = FlatRequiredEcho()
+  let args = try FlatRequiredEcho.Arguments(
+    GeneratedContent(
+      kind: .structure(
+        properties: ["message": GeneratedContent(kind: .string("hi"))],
+        orderedKeys: ["message"]
+      )
+    )
+  )
+  let output = try await tool.call(arguments: args)
+  #expect(output == "hi")
+}
+
 @Test func `flat tool call dispatches into a fresh self`() async throws {
   // The bare instance has its property defaults; `call(arguments:)` must
   // copy the LLM-supplied values across before invoking execute().

@@ -75,7 +75,19 @@ public struct ToolMacro: MemberMacro, ExtensionMacro {
     // typed @Parameter properties must add their own `init()` (or rely on
     // memberwise init).
     if !hasInit(in: declaration) && !hasStoredPropertiesRequiringInit(in: declaration) {
-      members.append("public init() {}")
+      let zeroDefaults = flatParameterZeroDefaults(in: declaration)
+      if zeroDefaults.isEmpty {
+        members.append("public init() {}")
+      } else {
+        let body = zeroDefaults.joined(separator: "\n    ")
+        members.append(
+          """
+          public init() {
+              \(raw: body)
+          }
+          """
+        )
+      }
     }
 
     members.append("public typealias Output = \(raw: userReturnType)")
@@ -140,9 +152,14 @@ public struct ToolMacro: MemberMacro, ExtensionMacro {
   }
 
   /// Returns true if the struct has at least one stored instance property
-  /// without a default value — i.e. something that an auto-synthesized
-  /// `init()` would fail to initialize. Used to suppress the macro's
-  /// convenience init when the user has DI-style `let` dependencies.
+  /// without a default value AND without `@Parameter` — i.e. something that
+  /// an auto-synthesized `init()` could not initialize. `@Parameter`
+  /// properties without explicit defaults are auto-defaulted to a zero value
+  /// (see `flatParameterZeroDefaults`) so the user can write
+  /// `@Parameter("query") var query: String` without also specifying
+  /// `= ""` — the schema still treats the property as required (the @Generable
+  /// macro looks at the binding's `.initializer`, not at the synthesised
+  /// `init()` body), so the LLM must still supply a value.
   private static func hasStoredPropertiesRequiringInit(
     in declaration: some DeclGroupSyntax
   ) -> Bool {
@@ -153,15 +170,66 @@ public struct ToolMacro: MemberMacro, ExtensionMacro {
           || modifier.name.tokenKind == .keyword(.class)
       }
       if isStatic { continue }
+      let isParameter = propertyHasAttribute(named: "Parameter", on: varDecl.attributes)
       for binding in varDecl.bindings {
         // Computed properties have an accessorBlock; skip.
         if binding.accessorBlock != nil { continue }
         // Properties with a default value are fine.
         if binding.initializer != nil { continue }
+        // @Parameter properties get a zero default in the synthesised init.
+        if isParameter { continue }
         return true
       }
     }
     return false
+  }
+
+  /// Builds the assignment list the synthesised `init()` uses to give every
+  /// `@Parameter` property without an explicit Swift default a zero value
+  /// (`""`, `0`, `false`, `nil`, `[]`). Mirrors `MCPPromptMacro.zeroLiteral`.
+  /// Returns an empty array when no defaults need synthesising.
+  private static func flatParameterZeroDefaults(
+    in declaration: some DeclGroupSyntax
+  ) -> [String] {
+    var assignments: [String] = []
+    for member in declaration.memberBlock.members {
+      guard let varDecl = member.decl.as(VariableDeclSyntax.self) else { continue }
+      guard propertyHasAttribute(named: "Parameter", on: varDecl.attributes) else { continue }
+      for binding in varDecl.bindings {
+        if binding.accessorBlock != nil { continue }
+        if binding.initializer != nil { continue }
+        guard let pattern = binding.pattern.as(IdentifierPatternSyntax.self) else { continue }
+        let propName = pattern.identifier.text
+        let typeText =
+          binding.typeAnnotation?.type.description.trimmingCharacters(in: .whitespaces) ?? "String"
+        assignments.append("self.\(propName) = \(zeroLiteral(for: typeText))")
+      }
+    }
+    return assignments
+  }
+
+  private static func zeroLiteral(for swiftType: String) -> String {
+    let trimmed = swiftType.trimmingCharacters(in: .whitespaces)
+    if trimmed.hasSuffix("?") { return "nil" }
+    let base =
+      trimmed
+      .replacingOccurrences(of: "Optional<", with: "")
+      .replacingOccurrences(of: ">", with: "")
+      .trimmingCharacters(in: .whitespaces)
+    switch base {
+    case "String": return "\"\""
+    case "Int", "Int8", "Int16", "Int32", "Int64",
+      "UInt", "UInt8", "UInt16", "UInt32", "UInt64":
+      return "0"
+    case "Double", "Float", "CGFloat": return "0"
+    case "Bool": return "false"
+    default:
+      if trimmed.hasPrefix("[") && trimmed.hasSuffix("]") { return "[]" }
+      // Custom types (@Generable structs, enums, etc.) — fall back to a
+      // call to a zero-arg init. Authors who use such types must either add
+      // an explicit default or provide their own `init()`.
+      return "\(base)()"
+    }
   }
 
   /// Finds the user's `execute` method and returns its declared return type
