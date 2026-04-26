@@ -62,19 +62,19 @@ jobs:
       matrix:
         include:
           - platform: iOS
-            destination: platform=iOS Simulator,name=iPhone 17,OS=latest
+            destination: generic/platform=iOS Simulator
             action: test
           - platform: tvOS
-            destination: platform=tvOS Simulator,name=Apple TV,OS=latest
+            destination: generic/platform=tvOS Simulator
             action: test
           - platform: visionOS
-            destination: platform=visionOS Simulator,name=Apple Vision Pro,OS=latest
+            destination: generic/platform=visionOS Simulator
             action: test
           # MockURLProtocol does not intercept URLSession on watchOS, so the
           # provider wire tests fail with NSURLErrorDomain -1003 there. Verify
           # the test bundle compiles for watchOS without executing it.
           - platform: watchOS
-            destination: platform=watchOS Simulator,name=Apple Watch Series 11 (46mm),OS=latest
+            destination: generic/platform=watchOS Simulator
             action: build-for-testing
     steps:
       - uses: actions/checkout@v6
