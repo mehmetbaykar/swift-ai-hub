@@ -118,6 +118,14 @@ Production HTTP on Linux can route through `AsyncHTTPClient` by enabling the
 - macOS 14+, iOS 17+, tvOS 17+, watchOS 10+, visionOS 1+
 - Linux (Ubuntu 22.04+) with the `swift:6.2-jammy` toolchain or equivalent
 
+<p align="center">
+If you found this helpful, you can support more open source work!
+<br><br>
+<a href="https://buymeacoffee.com/mehmetbaykar" target="_blank"><img src="https://cdn.buymeacoffee.com/buttons/v2/default-yellow.png" alt="Buy Me A Coffee" height="60"></a>
+</p>
+
+---
+
 ## License
 
 MIT. See `LICENSE` (which also reproduces the upstream Apache-2.0 and MIT
