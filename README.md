@@ -20,7 +20,7 @@ print(reply.content)
 Add to your `Package.swift`:
 
 ```swift
-.package(url: "https://github.com/mehmetbaykar/swift-ai-hub", from: "0.6.1"),
+.package(url: "https://github.com/mehmetbaykar/swift-ai-hub", from: "0.7.0"),
 ```
 
 ```swift
