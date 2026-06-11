@@ -46,6 +46,7 @@ actor MockRequestScript {
   private var scripts: [String: [MockResponse]] = [:]
   private var observed: [String: [URLRequest]] = [:]
   private var consumed: [String: Int] = [:]
+  private var warmupTask: Task<Void, Never>?
 
   func enqueue(_ response: MockResponse, host: String) {
     scripts[host, default: []].append(response)
@@ -55,10 +56,47 @@ actor MockRequestScript {
     scripts[host, default: []].append(contentsOf: responses)
   }
 
-  func reset(host: String) {
+  func reset(host: String) async {
+    await ensureTransportWarm()
     scripts[host] = []
     observed[host] = []
     consumed[host] = 0
+  }
+
+  /// Fires throwaway mocked requests until one is served by
+  /// ``MockURLProtocol``, once per process.
+  ///
+  /// On freshly booted watchOS/visionOS simulators (CI), the very first
+  /// URLSession tasks of the process can bypass custom `protocolClasses`
+  /// and hit real networking — suites running in parallel each lost their
+  /// first wire test to NSURLError -1003/-1001 while every later request
+  /// was intercepted normally. Absorbing that warmup here keeps the real
+  /// tests deterministic on every platform.
+  private func ensureTransportWarm() async {
+    if let warmupTask {
+      await warmupTask.value
+      return
+    }
+    let task = Task {
+      let host = "transport-warmup.test"
+      let marker = "warm"
+      let configuration = URLSessionConfiguration.ephemeral
+      configuration.protocolClasses = [MockURLProtocol.self]
+      configuration.timeoutIntervalForRequest = 5
+      let session = URLSession(configuration: configuration)
+      for _ in 0..<5 {
+        await MockRequestScript.shared.enqueue(
+          MockResponse(json: marker), host: host)
+        let request = URLRequest(url: URL(string: "https://\(host)/ping")!)
+        if let (data, _) = try? await session.data(for: request),
+          String(decoding: data, as: UTF8.self) == marker
+        {
+          return
+        }
+      }
+    }
+    warmupTask = task
+    await task.value
   }
 
   func consumedCount(host: String) -> Int {
