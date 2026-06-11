@@ -89,7 +89,7 @@ struct GeminiWireTests {
     #expect(consumed == 2)
   }
 
-  // M14 regression: docs/04 §Testing requires request-body parity. Ensures
+  // Request-body parity regression. Ensures
   // the outbound JSON body for a generateContent call carries the expected
   // model path, user message, and tool descriptors in the `function_declarations`
   // shape specific to Gemini.

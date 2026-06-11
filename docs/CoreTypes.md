@@ -159,6 +159,7 @@ where Content: Generable, Content.PartiallyGenerated: Sendable {
   public struct Snapshot: Sendable where Content.PartiallyGenerated: Sendable {
     public var content: Content.PartiallyGenerated
     public var rawContent: GeneratedContent
+    public var thinking: String    // running reasoning buffer; empty when the model exposes none
   }
   public typealias Element = Snapshot
   public func makeAsyncIterator() -> AsyncIterator
@@ -313,8 +314,8 @@ public enum FinishReason: Sendable, Hashable, Codable {
 Both ride on `Response`. `FinishReason` encodes/decodes as a string and routes
 unknown values through `.other(_:)` so providers cannot crash a decode. Current
 provider wiring populates both for OpenAI Chat Completions, OpenAI Responses,
-Anthropic, Gemini, Ollama, HuggingFace, Kimi, and MiniMax responses that include
-those fields. CoreML populates `usage` only; FoundationModels, MLX, and Llama
+OpenResponses, Anthropic, Gemini, Ollama, HuggingFace, Kimi, and MiniMax
+responses that include those fields. CoreML populates `usage` only; FoundationModels, MLX, and Llama
 leave both fields `nil` when their runtimes do not expose them.
 
 ## `RateLimitInfo`
@@ -367,7 +368,9 @@ public enum MissingToolPolicy: Sendable {
 ```
 
 `RetryPolicy` wraps each `Tool.call(arguments:)` invocation inside the
-provider's tool-call loop. Set both on the session at init time.
+provider's tool-call loop. Backoff delays are always finite and capped at one
+hour, so an extreme base or attempt count cannot overflow the sleep. Set both
+policies on the session at init time.
 
 ## `LanguageModelError`
 
@@ -385,7 +388,8 @@ public protocol LanguageModelError: Error, Sendable, CustomStringConvertible {
 
 Current provider conformers are `OpenAILanguageModelError`,
 `OpenResponsesLanguageModelError`, `HuggingFaceLanguageModelError`,
-`GeminiError`, and `MLXLanguageModelError` (when the MLX trait is enabled). A
+`GeminiError`, `AnthropicLanguageModelError`, and `MLXLanguageModelError`
+(when the MLX trait is enabled). A
 single `catch let e as any LanguageModelError` block can inspect status,
 message, and retry intent. Local/decoding failures return `nil` for
 `httpStatus`; the retryable set is 408, 425, 429, and 5xx.

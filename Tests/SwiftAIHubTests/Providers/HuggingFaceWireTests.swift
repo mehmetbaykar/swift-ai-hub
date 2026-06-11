@@ -101,7 +101,7 @@ struct HuggingFaceWireTests {
     #expect(consumed == 2)
   }
 
-  // M14: docs/04 §Testing — HuggingFace wraps OpenAI's chat-completions
+  // HuggingFace wraps OpenAI's chat-completions
   // body; verify the wrapped request still carries the expected fields.
   @Test func `request body serialization`() async throws {
     await MockRequestScript.shared.reset(host: huggingFaceHost)

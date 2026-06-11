@@ -98,7 +98,7 @@ struct MiniMaxWireTests {
     #expect(consumed == 2)
   }
 
-  // M14: docs/04 §Testing — MiniMax wraps OpenAI chat-completions.
+  // MiniMax wraps OpenAI chat-completions.
   @Test func `request body serialization`() async throws {
     await MockRequestScript.shared.reset(host: miniMaxHost)
     await MockRequestScript.shared.enqueue(

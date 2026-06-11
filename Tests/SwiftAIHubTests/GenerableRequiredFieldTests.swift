@@ -3,7 +3,7 @@
 // required (non-optional) properties rather than silently substituting
 // placeholder defaults (empty string, 0, false, [], [:], nested Type("{}")).
 //
-// Spec: docs/02-macros.md line 15 — "No placeholder defaults are ever emitted."
+// Contract: no placeholder defaults are ever emitted for required fields.
 //
 // Optional<T> properties retain their existing semantics: absence / .null
 // decodes to nil.

@@ -6,7 +6,7 @@
 // drift.
 //
 // Complements the existing SwiftSyntaxMacrosTestSupport-based tests; does
-// not replace them. Matrix (per docs/09:36 audit-E):
+// not replace them. Matrix:
 //   1. @Generable struct (primitive properties)
 //   2. @Generable struct with nested @Generable field ($ref / inline schema)
 //   3. @Generable enum with associated values (regression for af92a6b)

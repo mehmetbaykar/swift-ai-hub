@@ -102,10 +102,15 @@ public init(
 
 - `apiVersion` — defaults to `"2023-06-01"`.
 - `betas` — pass beta header tokens for opt-in features.
+- `baseURL` must use HTTPS; plain HTTP is accepted only for localhost
+  development endpoints. Requests against any other plaintext URL throw
+  `AnthropicLanguageModelError.insecureBaseURL` before the API key is sent.
 - Custom options: `AnthropicLanguageModel.CustomGenerationOptions`
   carries `topP`, `topK`, `stopSequences`, `metadata`, `toolChoice`,
   `thinking` (extended thinking budget), `serviceTier`, `extraBody`, and
-  `promptCaching`.
+  `promptCaching`. Anthropic's API rejects requests that set both
+  `temperature` and `top_p`, so when `GenerationOptions.temperature` is
+  set the custom `topP` is dropped from the request.
 
 ## Gemini
 

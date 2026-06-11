@@ -86,7 +86,7 @@ struct OpenResponsesWireTests {
     #expect(consumed == 2)
   }
 
-  // M14: docs/04 §Testing — exact request-body shape for /v1/responses.
+  // Exact request-body shape for /v1/responses.
   @Test func `request body serialization`() async throws {
     await MockRequestScript.shared.reset(host: openResponsesHost)
     await MockRequestScript.shared.enqueue(

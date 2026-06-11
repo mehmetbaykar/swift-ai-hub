@@ -1,6 +1,6 @@
 // swift-ai-hub — Apache-2.0
-// Compiler plugin entry point. Macros (@Tool, @Parameter, @Generable, @Guide)
-// register here in docs/09 steps 4-5.
+// Compiler plugin entry point where the macros (@Tool, @Parameter,
+// @Generable, @Guide) register.
 
 import SwiftCompilerPlugin
 import SwiftSyntaxMacros

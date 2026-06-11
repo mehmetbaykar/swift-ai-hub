@@ -86,7 +86,7 @@ struct OllamaWireTests {
     #expect(consumed == 2)
   }
 
-  // M14: docs/04 §Testing — exact request-body shape for /api/chat.
+  // Exact request-body shape for /api/chat.
   @Test func `request body serialization`() async throws {
     await MockRequestScript.shared.reset(host: ollamaHost)
     await MockRequestScript.shared.enqueue(

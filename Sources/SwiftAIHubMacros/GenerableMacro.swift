@@ -855,10 +855,8 @@ public struct GenerableMacro: MemberMacro, ExtensionMacro {
     -> String
   {
     // Required (non-optional) property: absence or .null must throw rather
-    // than substitute a placeholder default. See docs/02-macros.md:15 —
-    // "No placeholder defaults are ever emitted." Side-effecting tools
-    // would otherwise run with fabricated arguments on malformed model
-    // output.
+    // than substitute a placeholder default — side-effecting tools would
+    // otherwise run with fabricated arguments on malformed model output.
     //
     // Absence → `DecodingError.keyNotFound`. `.null` → `DecodingError.valueNotFound`.
     func requiredPrimitive(_ base: String) -> String {
@@ -1348,8 +1346,8 @@ public struct GenerableMacro: MemberMacro, ExtensionMacro {
     // and that matches the outer `valueContent` binding in the enclosing
     // switch. Non-optional required primitives throw on absence or .null so
     // tool arguments decoded from malformed model output fail loudly instead
-    // of falling back to 0/""/false — this extends T1's struct-init pattern
-    // to the enum associated-value path (docs/02-macros.md:15).
+    // of falling back to 0/""/false — this extends the struct-init pattern
+    // to the enum associated-value path.
     if let inner = optionalPrimitiveInnerType(valueType) {
       // Optional primitive: absence OR .null → .case(nil). Otherwise decode
       // the inner primitive.
@@ -1433,7 +1431,7 @@ public struct GenerableMacro: MemberMacro, ExtensionMacro {
     // unlabeled fields use `param0`/`param1`/… which must match the schema
     // and the serialiser. Non-optional fields throw on absence / .null
     // instead of substituting placeholder defaults — same contract as
-    // T1's struct-init path (docs/02-macros.md:15).
+    // the struct-init path.
     let valueExtractions = associatedValues.enumerated().map { index, assocValue in
       let binding = assocValue.label ?? "param\(index)"
       let key = binding

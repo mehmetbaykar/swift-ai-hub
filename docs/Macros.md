@@ -256,6 +256,10 @@ surface in `Sources/SwiftAIHub/Generation/GenerationGuide.swift`):
   `.pattern(_: Regex<Output>)` (also exposed via the third `@Guide`
   overload that takes a bare `Regex`).
 
+Invalid guide inputs never produce an unsatisfiable schema: an empty
+`.anyOf([])` and negative array counts degrade to an unconstrained guide
+instead of trapping or emitting an empty `enum` / negative `minItems`.
+
 ### What reaches the schema today
 
 `GenerableMacro` recognises and re-emits:
