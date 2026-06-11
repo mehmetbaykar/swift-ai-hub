@@ -55,27 +55,12 @@ jobs:
       - run: swift test --traits MLX,CoreML,Llama,FoundationModels
 
   apple-platforms:
-    name: ${{ matrix.platform }} ${{ matrix.action }}
+    name: ${{ matrix.platform }} test
     runs-on: macos-26
     strategy:
       fail-fast: false
       matrix:
-        include:
-          - platform: iOS
-            destination: generic/platform=iOS Simulator
-            action: build-for-testing
-          - platform: tvOS
-            destination: generic/platform=tvOS Simulator
-            action: build-for-testing
-          - platform: visionOS
-            destination: generic/platform=visionOS Simulator
-            action: build-for-testing
-          # GitHub runner simulator inventories vary by image. Verify the test
-          # bundles compile for Apple simulator platforms without depending on
-          # concrete device names or runtimes being installed.
-          - platform: watchOS
-            destination: generic/platform=watchOS Simulator
-            action: build-for-testing
+        platform: [iOS, tvOS, watchOS, visionOS]
     steps:
       - uses: actions/checkout@v6
       - name: Cache SPM
@@ -87,11 +72,34 @@ jobs:
           key: ${{ runner.os }}-spm-${{ matrix.platform }}-${{ hashFiles('Package.swift', 'Package.resolved') }}
           restore-keys: |
             ${{ runner.os }}-spm-${{ matrix.platform }}-
-      - name: xcodebuild ${{ matrix.action }}
+      # Runner images don't preinstall every simulator runtime; download is a
+      # fast no-op when the platform is already present.
+      - name: Ensure ${{ matrix.platform }} simulator runtime
+        run: xcodebuild -downloadPlatform ${{ matrix.platform }} -quiet
+      # Simulator inventories vary by image, so resolve a device UDID at run
+      # time instead of hardcoding a device name.
+      - name: Pick a ${{ matrix.platform }} simulator
+        id: sim
         run: |
-          xcodebuild ${{ matrix.action }} \
+          UDID=$(xcrun simctl list devices available --json | jq -r '
+            .devices
+            | to_entries
+            | map(select(.key
+                | contains("${{ matrix.platform }}")
+                  or ("${{ matrix.platform }}" == "visionOS" and contains("xrOS"))))
+            | sort_by(.key) | reverse
+            | map(.value[]) | first | .udid // empty')
+          if [ -z "$UDID" ]; then
+            echo "No available ${{ matrix.platform }} simulator after runtime download" >&2
+            xcrun simctl list devices available >&2
+            exit 1
+          fi
+          echo "udid=$UDID" >> "$GITHUB_OUTPUT"
+      - name: xcodebuild test (${{ matrix.platform }} Simulator)
+        run: |
+          xcodebuild test \
             -scheme swift-ai-hub-Package \
-            -destination '${{ matrix.destination }}' \
+            -destination 'platform=${{ matrix.platform }} Simulator,id=${{ steps.sim.outputs.udid }}' \
             -skipPackagePluginValidation \
             -skipMacroValidation \
             CODE_SIGNING_ALLOWED=NO
