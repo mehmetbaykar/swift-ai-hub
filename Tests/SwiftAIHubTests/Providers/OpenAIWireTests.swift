@@ -101,7 +101,7 @@ private let responsesToolCallBody = """
   }
   """
 
-@Suite(.serialized)
+@Suite(.serialized, .wireTransport)
 struct OpenAIWireTests {
 
   // MARK: - Chat Completions variant

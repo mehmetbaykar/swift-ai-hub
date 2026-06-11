@@ -62,7 +62,7 @@ private let huggingFaceToolCallBody = """
   }
   """
 
-@Suite(.serialized)
+@Suite(.serialized, .wireTransport)
 struct HuggingFaceWireTests {
   @Test func `single shot final answer`() async throws {
     await MockRequestScript.shared.reset(host: huggingFaceHost)

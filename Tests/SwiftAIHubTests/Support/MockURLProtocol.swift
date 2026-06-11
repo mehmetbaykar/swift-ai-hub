@@ -8,10 +8,25 @@
 // run in parallel without stealing each other's scripted responses.
 
 import Foundation
+import Testing
 
 #if canImport(FoundationNetworking)
   import FoundationNetworking
 #endif
+
+extension Trait where Self == ConditionTrait {
+  /// Wire suites rely on `URLProtocol` interception, which watchOS does not
+  /// support: requests intermittently bypass `protocolClasses` and hit real
+  /// networking (NSURLProtocol has never been a supported watchOS API).
+  /// The suites still compile for watchOS — only execution is skipped.
+  static var wireTransport: Self {
+    #if os(watchOS)
+      .disabled("URLProtocol interception is unsupported on watchOS")
+    #else
+      .enabled(if: true)
+    #endif
+  }
+}
 
 /// A scripted response bound to a specific request slot.
 struct MockResponse: Sendable {

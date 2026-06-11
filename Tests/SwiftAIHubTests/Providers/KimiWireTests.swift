@@ -62,7 +62,7 @@ private let kimiToolCallBody = """
   }
   """
 
-@Suite(.serialized)
+@Suite(.serialized, .wireTransport)
 struct KimiWireTests {
   @Test func `single shot final answer`() async throws {
     await MockRequestScript.shared.reset(host: kimiHost)

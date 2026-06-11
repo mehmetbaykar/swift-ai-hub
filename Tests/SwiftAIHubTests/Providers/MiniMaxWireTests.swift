@@ -62,7 +62,7 @@ private let miniMaxToolCallBody = """
   }
   """
 
-@Suite(.serialized)
+@Suite(.serialized, .wireTransport)
 struct MiniMaxWireTests {
   @Test func `single shot final answer`() async throws {
     await MockRequestScript.shared.reset(host: miniMaxHost)

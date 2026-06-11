@@ -55,7 +55,7 @@ private let geminiFunctionCallBody = """
   }
   """
 
-@Suite(.serialized)
+@Suite(.serialized, .wireTransport)
 struct GeminiWireTests {
   @Test func `single shot final answer`() async throws {
     await MockRequestScript.shared.reset(host: geminiHost)

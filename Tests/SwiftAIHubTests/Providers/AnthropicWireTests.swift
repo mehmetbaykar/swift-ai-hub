@@ -73,7 +73,7 @@ private let anthropicToolUseBody = """
   }
   """
 
-@Suite(.serialized)
+@Suite(.serialized, .wireTransport)
 struct AnthropicWireTests {
   @Test func `single shot final answer`() async throws {
     await MockRequestScript.shared.reset(host: anthropicHost)

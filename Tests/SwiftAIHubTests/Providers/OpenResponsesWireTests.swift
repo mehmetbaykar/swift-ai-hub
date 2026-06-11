@@ -52,7 +52,7 @@ private let openResponsesToolCallBody = """
   }
   """
 
-@Suite(.serialized)
+@Suite(.serialized, .wireTransport)
 struct OpenResponsesWireTests {
   @Test func `single shot final answer`() async throws {
     await MockRequestScript.shared.reset(host: openResponsesHost)

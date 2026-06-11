@@ -72,10 +72,16 @@ jobs:
           key: ${{ runner.os }}-spm-${{ matrix.platform }}-${{ hashFiles('Package.swift', 'Package.resolved') }}
           restore-keys: |
             ${{ runner.os }}-spm-${{ matrix.platform }}-
-      # Runner images don't preinstall every simulator runtime; download is a
-      # fast no-op when the platform is already present.
+      # Runner images don't preinstall every simulator runtime, and
+      # -downloadPlatform intermittently fails (exit 70) even when the
+      # runtime is already installed — so only download when it's missing.
       - name: Ensure ${{ matrix.platform }} simulator runtime
-        run: xcodebuild -downloadPlatform ${{ matrix.platform }} -quiet
+        run: |
+          if xcrun simctl list runtimes | grep -q '^${{ matrix.platform }} '; then
+            echo "${{ matrix.platform }} runtime already installed"
+          else
+            xcodebuild -downloadPlatform ${{ matrix.platform }} -quiet
+          fi
       # Simulator inventories vary by image, so resolve a device UDID at run
       # time instead of hardcoding a device name.
       - name: Pick a ${{ matrix.platform }} simulator

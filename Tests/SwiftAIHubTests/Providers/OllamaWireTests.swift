@@ -52,7 +52,7 @@ private let ollamaToolCallBody = """
   }
   """
 
-@Suite(.serialized)
+@Suite(.serialized, .wireTransport)
 struct OllamaWireTests {
   @Test func `single shot final answer`() async throws {
     await MockRequestScript.shared.reset(host: ollamaHost)
