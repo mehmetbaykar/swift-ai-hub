@@ -470,17 +470,22 @@
 
               private let rawContent: GeneratedContent
 
+              private static func _partial<T: ConvertibleFromGeneratedContent>(
+                  _ type: T.Type, _ content: GeneratedContent?
+              ) -> T? {
+                  guard let content else {
+                    return nil
+                  }
+                  return try? type.init(content)
+              }
+
               public init(_ generatedContent: GeneratedContent) {
                   self.id = generatedContent.id ?? GenerationID()
                   self.rawContent = generatedContent
 
                   if case .structure(let properties, _) = generatedContent.kind {
                       self.name = try? properties["name"]?.value(String.self)
-                      if let value = properties["address"] {
-              self.address = try? Address.PartiallyGenerated(value)
-                      } else {
-              self.address = nil
-                      }
+                      self.address = Self._partial(Address.PartiallyGenerated.self, properties["address"])
                   } else {
                       self.name = nil
                               self.address = nil

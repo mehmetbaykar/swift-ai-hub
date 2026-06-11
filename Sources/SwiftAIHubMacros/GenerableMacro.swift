@@ -825,15 +825,29 @@ public struct GenerableMacro: MemberMacro, ExtensionMacro {
           }
           """
       } else {
+        // Routed through the `_partial` helper (emitted alongside the
+        // extractions) because the target's `init(_:)` may be throwing
+        // (enums, where PartiallyGenerated is Self) or non-throwing
+        // (generated PartiallyGenerated structs) — calling through the
+        // protocol's throwing requirement compiles warning-free for both.
         let partialType = partiallyGeneratedTypeName(for: baseType)
         return """
-          if let value = properties[\"\(propertyName)\"] {
-              self.\(propertyName) = try? \(partialType)(value)
-          } else {
-              self.\(propertyName) = nil
-          }
+          self.\(propertyName) = Self._partial(\(partialType).self, properties[\"\(propertyName)\"])
           """
       }
+    }
+  }
+
+  /// True when `generatePartialPropertyExtraction` for this type routes
+  /// through the `_partial` helper (nested Generable types — not
+  /// primitives, dictionaries, or arrays).
+  private static func partialExtractionUsesHelper(propertyType: String) -> Bool {
+    let baseType = baseTypeName(propertyType)
+    switch baseType {
+    case "String", "Int", "Double", "Float", "Bool":
+      return false
+    default:
+      return !isDictionaryType(baseType) && arrayElementType(from: baseType) == nil
     }
   }
 
@@ -1099,6 +1113,27 @@ public struct GenerableMacro: MemberMacro, ExtensionMacro {
       generatePartialPropertyExtraction(propertyName: prop.name, propertyType: prop.type)
     }.joined(separator: "\n            ")
 
+    // Conversion for nested Generable properties goes through the
+    // protocol's throwing `init(_:)` requirement: the concrete initializer
+    // may be throwing (enums) or non-throwing (generated structs), and a
+    // direct call would warn on the non-throwing one.
+    let needsPartialHelper = partialProperties.contains {
+      partialExtractionUsesHelper(propertyType: $0.type)
+    }
+    let partialHelper =
+      needsPartialHelper
+      ? """
+
+          private static func _partial<T: ConvertibleFromGeneratedContent>(
+              _ type: T.Type, _ content: GeneratedContent?
+          ) -> T? {
+              guard let content else { return nil }
+              return try? type.init(content)
+          }
+
+      """
+      : ""
+
     return DeclSyntax(
       stringLiteral: """
         public struct PartiallyGenerated: Identifiable, Sendable, ConvertibleFromGeneratedContent {
@@ -1107,7 +1142,7 @@ public struct GenerableMacro: MemberMacro, ExtensionMacro {
             \(optionalProperties)
 
             private let rawContent: GeneratedContent
-
+        \(partialHelper)
             public init(_ generatedContent: GeneratedContent) {
                 self.id = generatedContent.id ?? GenerationID()
                 self.rawContent = generatedContent
