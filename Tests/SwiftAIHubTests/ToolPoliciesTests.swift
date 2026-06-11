@@ -277,3 +277,17 @@ private func call(_ name: String) -> Transcript.ToolCall {
   #expect(outputs[1].toolName == "s2")
   #expect(outputs[2].toolName == "s3")
 }
+
+// MARK: - Backoff bounds
+
+@Test func `exponential backoff delay stays finite and capped`() {
+  let policy = RetryPolicy(maxAttempts: Int.max, backoff: .exponential(base: 60))
+
+  // 60 * 2^3999 overflows Double to infinity without the clamp; an infinite
+  // delay would trap in Task.sleep's UInt64 nanosecond conversion.
+  let delay = policy.delay(forFailedAttempt: 4000)
+
+  #expect(delay.isFinite)
+  #expect(delay == RetryPolicy.maximumBackoffDelay)
+  #expect(policy.delay(forFailedAttempt: 1) == 60)
+}

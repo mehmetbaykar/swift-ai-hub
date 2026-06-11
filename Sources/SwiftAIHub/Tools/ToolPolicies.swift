@@ -64,20 +64,30 @@ public struct RetryPolicy: Sendable {
   /// Default policy: single attempt, no retry.
   public static let disabled = RetryPolicy(maxAttempts: 1, backoff: .none, condition: .never)
 
+  /// Upper bound on a single backoff delay. Exponential growth (or an
+  /// extreme caller-supplied base) can overflow `Double` past what
+  /// `Task.sleep`'s nanosecond conversion tolerates — `UInt64(infinity)`
+  /// traps — so delays are clamped to one hour.
+  static let maximumBackoffDelay: TimeInterval = 3600
+
   /// Computes the delay (seconds) before the next attempt given the
-  /// number of failed attempts so far (1-based).
+  /// number of failed attempts so far (1-based). The result is finite and
+  /// capped at ``maximumBackoffDelay``.
   func delay(forFailedAttempt failedAttempt: Int) -> TimeInterval {
+    let raw: TimeInterval
     switch backoff {
     case .none:
       return 0
     case .constant(let value):
-      return max(0, value)
+      raw = value
     case .linear(let base):
-      return max(0, base * Double(failedAttempt))
+      raw = base * Double(failedAttempt)
     case .exponential(let base):
       let exponent = max(0, failedAttempt - 1)
-      return max(0, base * pow(2.0, Double(exponent)))
+      raw = base * pow(2.0, Double(exponent))
     }
+    guard raw.isFinite else { return Self.maximumBackoffDelay }
+    return min(max(0, raw), Self.maximumBackoffDelay)
   }
 }
 

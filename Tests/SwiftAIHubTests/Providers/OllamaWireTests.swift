@@ -45,7 +45,7 @@ private let ollamaToolCallBody = """
       "role": "assistant",
       "content": "",
       "tool_calls": [{
-        "function": {"name": "ollamaEcho", "arguments": {"text": "hi"}}
+        "function": {"name": "ollama_echo", "arguments": {"text": "hi"}}
       }]
     },
     "done": true
@@ -113,7 +113,7 @@ struct OllamaWireTests {
 
     let tools = try #require(body["tools"] as? [[String: Any]])
     let fn = try #require(tools.first?["function"] as? [String: Any])
-    #expect(fn["name"] as? String == "ollamaEcho")
+    #expect(fn["name"] as? String == "ollama_echo")
   }
 
   @Test func `max tool call rounds one throws on second tool call`() async throws {
@@ -166,5 +166,26 @@ struct OllamaWireTests {
     #expect(usage.promptTokens == 4)
     #expect(usage.completionTokens == 6)
     #expect(usage.totalTokens == 10)
+  }
+
+  /// Ollama reports truncation as `max_tokens` (or `num_predict`) depending
+  /// on version; both must land on `.length`, not `.other`.
+  @Test func `done reason max tokens maps to length`() async throws {
+    await MockRequestScript.shared.reset(host: ollamaHost)
+    let body = """
+      {
+        "model": "qwen-test",
+        "created_at": "2026-04-23T00:00:00Z",
+        "message": {"role": "assistant", "content": "truncated"},
+        "done": true,
+        "done_reason": "max_tokens"
+      }
+      """
+    await MockRequestScript.shared.enqueue(MockResponse(json: body), host: ollamaHost)
+
+    let session = LanguageModelSession(model: makeOllamaModel())
+    let response = try await session.respond(to: "hello")
+
+    #expect(response.finishReason == .length)
   }
 }

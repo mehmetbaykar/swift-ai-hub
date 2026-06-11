@@ -172,10 +172,8 @@ extension ParameterMacro {
       switch arg.label?.text {
       case nil:
         // Unlabeled argument is the description
-        if let stringLiteral = arg.expression.as(StringLiteralExprSyntax.self),
-          let segment = stringLiteral.segments.first?.as(StringSegmentSyntax.self)
-        {
-          description = segment.content.text
+        if let stringLiteral = arg.expression.as(StringLiteralExprSyntax.self) {
+          description = StaticStringLiteral.value(of: stringLiteral)
         }
 
       case "default":
@@ -184,12 +182,10 @@ extension ParameterMacro {
       case "oneOf":
         if let arrayExpr = arg.expression.as(ArrayExprSyntax.self) {
           oneOfOptions = arrayExpr.elements.compactMap { element -> String? in
-            guard let stringLiteral = element.expression.as(StringLiteralExprSyntax.self),
-              let segment = stringLiteral.segments.first?.as(StringSegmentSyntax.self)
-            else {
+            guard let stringLiteral = element.expression.as(StringLiteralExprSyntax.self) else {
               return nil
             }
-            return segment.content.text
+            return StaticStringLiteral.value(of: stringLiteral)
           }
         }
 

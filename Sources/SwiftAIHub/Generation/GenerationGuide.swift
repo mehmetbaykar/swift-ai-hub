@@ -113,8 +113,13 @@ extension GenerationGuide where Value == String {
   }
 
   /// Enforces that the string be one of the provided values.
+  ///
+  /// An empty `values` array degrades to an unconstrained guide — emitting
+  /// an empty `enum` into the schema would be unsatisfiable and is rejected
+  /// by providers.
   public static func anyOf(_ values: [String]) -> GenerationGuide<String> {
-    GenerationGuide<String>(stringEnumChoices: values)
+    guard !values.isEmpty else { return GenerationGuide<String>() }
+    return GenerationGuide<String>(stringEnumChoices: values)
   }
 
   /// Enforces that the string follows the pattern.
@@ -287,30 +292,41 @@ extension GenerationGuide {
 
   /// Enforces a minimum number of elements in the array.
   ///
-  /// The bounds are inclusive.
+  /// The bounds are inclusive. Negative counts degrade to an unconstrained
+  /// guide instead of emitting an invalid schema.
   public static func minimumCount<Element>(_ count: Int) -> GenerationGuide<[Element]>
   where Value == [Element] {
-    GenerationGuide<[Element]>(minimumCount: count, maximumCount: nil)
+    guard count >= 0 else { return GenerationGuide<[Element]>() }
+    return GenerationGuide<[Element]>(minimumCount: count, maximumCount: nil)
   }
 
   /// Enforces a maximum number of elements in the array.
   ///
-  /// The bounds are inclusive.
+  /// The bounds are inclusive. Negative counts degrade to an unconstrained
+  /// guide instead of emitting an invalid schema.
   public static func maximumCount<Element>(_ count: Int) -> GenerationGuide<[Element]>
   where Value == [Element] {
-    GenerationGuide<[Element]>(minimumCount: nil, maximumCount: count)
+    guard count >= 0 else { return GenerationGuide<[Element]>() }
+    return GenerationGuide<[Element]>(minimumCount: nil, maximumCount: count)
   }
 
   /// Enforces that the number of elements in the array fall within a closed range.
+  ///
+  /// Ranges starting below zero degrade to an unconstrained guide.
   public static func count<Element>(_ range: ClosedRange<Int>) -> GenerationGuide<[Element]>
   where Value == [Element] {
-    GenerationGuide<[Element]>(minimumCount: range.lowerBound, maximumCount: range.upperBound)
+    guard range.lowerBound >= 0 else { return GenerationGuide<[Element]>() }
+    return GenerationGuide<[Element]>(
+      minimumCount: range.lowerBound, maximumCount: range.upperBound)
   }
 
   /// Enforces that the array has exactly a certain number elements.
+  ///
+  /// Negative counts degrade to an unconstrained guide.
   public static func count<Element>(_ count: Int) -> GenerationGuide<[Element]>
   where Value == [Element] {
-    GenerationGuide<[Element]>(minimumCount: count, maximumCount: count)
+    guard count >= 0 else { return GenerationGuide<[Element]>() }
+    return GenerationGuide<[Element]>(minimumCount: count, maximumCount: count)
   }
 
   /// Enforces a guide on the elements within the array.
@@ -332,7 +348,8 @@ extension GenerationGuide where Value == [Never] {
   ///
   /// - Warning: This overload is only used for macro expansion. Don't call `GenerationGuide<[Never]>.minimumCount(_:)` on your own.
   public static func minimumCount(_ count: Int) -> GenerationGuide<Value> {
-    GenerationGuide<Value>(minimumCount: count, maximumCount: nil)
+    guard count >= 0 else { return GenerationGuide<Value>() }
+    return GenerationGuide<Value>(minimumCount: count, maximumCount: nil)
   }
 
   /// Enforces a maximum number of elements in the array.
@@ -341,20 +358,23 @@ extension GenerationGuide where Value == [Never] {
   ///
   /// - Warning: This overload is only used for macro expansion. Don't call `GenerationGuide<[Never]>.maximumCount(_:)` on your own.
   public static func maximumCount(_ count: Int) -> GenerationGuide<Value> {
-    GenerationGuide<Value>(minimumCount: nil, maximumCount: count)
+    guard count >= 0 else { return GenerationGuide<Value>() }
+    return GenerationGuide<Value>(minimumCount: nil, maximumCount: count)
   }
 
   /// Enforces that the number of elements in the array fall within a closed range.
   ///
   /// - Warning: This overload is only used for macro expansion. Don't call `GenerationGuide<[Never]>.count(_:)` on your own.
   public static func count(_ range: ClosedRange<Int>) -> GenerationGuide<Value> {
-    GenerationGuide<Value>(minimumCount: range.lowerBound, maximumCount: range.upperBound)
+    guard range.lowerBound >= 0 else { return GenerationGuide<Value>() }
+    return GenerationGuide<Value>(minimumCount: range.lowerBound, maximumCount: range.upperBound)
   }
 
   /// Enforces that the array has exactly a certain number elements.
   ///
   /// - Warning: This overload is only used for macro expansion. Don't call `GenerationGuide<[Never]>.count(_:)` on your own.
   public static func count(_ count: Int) -> GenerationGuide<Value> {
-    GenerationGuide<Value>(minimumCount: count, maximumCount: count)
+    guard count >= 0 else { return GenerationGuide<Value>() }
+    return GenerationGuide<Value>(minimumCount: count, maximumCount: count)
   }
 }

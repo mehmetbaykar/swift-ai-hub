@@ -60,7 +60,7 @@ public struct GenerationSchema: Equatable, Codable, CustomDebugStringConvertible
     private enum CodingKeys: String, CodingKey {
       case type, properties, required, additionalProperties
       case items, minItems, maxItems
-      case pattern, `enum`, anyOf
+      case pattern, `enum`, anyOf, oneOf
       case ref = "$ref"
       case description
       case minimum, maximum
@@ -152,6 +152,16 @@ public struct GenerationSchema: Equatable, Codable, CustomDebugStringConvertible
 
       if container.contains(.anyOf) {
         let nodes = try container.decode([GenerationSchema.Node].self, forKey: .anyOf)
+        self = .anyOf(nodes)
+        return
+      }
+
+      // JSON Schema's `oneOf` (exactly-one) is accepted as `anyOf`: the
+      // schema tree has no exclusivity construct, and for generation
+      // guidance the union of allowed shapes is what matters. Without this,
+      // remote MCP tool schemas using `oneOf` degrade to free-form objects.
+      if container.contains(.oneOf) {
+        let nodes = try container.decode([GenerationSchema.Node].self, forKey: .oneOf)
         self = .anyOf(nodes)
         return
       }
@@ -467,6 +477,41 @@ public struct GenerationSchema: Equatable, Codable, CustomDebugStringConvertible
       return GenerationSchema(root: defNode, defs: defs)
     }
     return nil
+  }
+
+  /// Returns a copy of the schema with every `.ref` node — root and nested —
+  /// inlined from `defs`, producing a self-contained tree with no `$ref`s.
+  ///
+  /// Provider conversions that re-encode through schema types without a
+  /// `$defs` container (Anthropic's and Gemini's tool/output schemas) would
+  /// otherwise emit dangling `$ref`s for tools whose arguments nest
+  /// `@Generable` types. Self-referential schemas stop inlining at the
+  /// revisited name, leaving that inner `.ref` intact rather than recursing
+  /// forever.
+  func resolvingNestedRefs() -> GenerationSchema {
+    var visiting: Set<String> = []
+
+    func inline(_ node: Node) -> Node {
+      switch node {
+      case .ref(let name):
+        guard let target = defs[name], !visiting.contains(name) else { return node }
+        visiting.insert(name)
+        defer { visiting.remove(name) }
+        return inline(target)
+      case .object(var obj):
+        obj.properties = obj.properties.mapValues { inline($0) }
+        return .object(obj)
+      case .array(var arr):
+        arr.items = inline(arr.items)
+        return .array(arr)
+      case .anyOf(let nodes):
+        return .anyOf(nodes.map { inline($0) })
+      case .string, .number, .boolean:
+        return node
+      }
+    }
+
+    return GenerationSchema(root: inline(root), defs: [:])
   }
 
   private static func convertDynamic(

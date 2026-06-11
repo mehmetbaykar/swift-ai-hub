@@ -123,7 +123,7 @@ extension WeatherTool: SwiftAIHub.Tool, Swift.Sendable {}
 
 | From | Rule |
 |---|---|
-| `name` | the struct name with a trailing `Tool` stripped and the first letter lowercased. `WeatherTool` to `weather`, `Search` to `search`. |
+| `name` | the struct name with a trailing `Tool` stripped, snake_cased with acronym runs grouped. `WeatherTool` to `weather`, `GetWeatherTool` to `get_weather`, `OpenAIEchoTool` to `open_ai_echo`. |
 | `description` | the macro's string argument. |
 | `parameters` schema | `Arguments.generationSchema`, synthesized from flat `@Parameter` properties when needed. |
 | `Output` | inferred from the user's `execute()` or `execute(_:)` return type. |

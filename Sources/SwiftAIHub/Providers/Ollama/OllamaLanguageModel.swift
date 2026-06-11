@@ -475,7 +475,10 @@ private func convertToolToOllamaFormat(_ tool: any Tool) throws -> [String: JSON
 }
 
 private func convertSchemaToOllamaFormat(_ schema: GenerationSchema) throws -> JSONSchema {
-  let resolvedSchema = schema.withResolvedRoot() ?? schema
+  // JSONSchema has no `$defs` container, so every `$ref` — root and
+  // nested — must be inlined before the round-trip or structured-output
+  // formats for nested @Generable types carry dangling references.
+  let resolvedSchema = schema.resolvingNestedRefs()
   let data = try JSONEncoder().encode(resolvedSchema)
   return try JSONDecoder().decode(JSONSchema.self, from: data)
 }
@@ -603,11 +606,18 @@ private struct ChatResponse: Decodable, Sendable {
   }
 
   /// Maps Ollama's `done_reason` string onto the hub ``FinishReason``.
-  /// `"stop"` / `"length"` map directly; other values round-trip through
-  /// ``FinishReason/other(_:)``.
+  /// Ollama reports truncation as `"length"`, `"max_tokens"`, or
+  /// `"num_predict"` depending on version and the configured limit; tool
+  /// dispatch surfaces as `"tool_calls"` / `"tool_call"`. Other values
+  /// round-trip through ``FinishReason/other(_:)``.
   var hubFinishReason: FinishReason? {
     guard let raw = doneReason else { return nil }
-    return FinishReason(rawValue: raw)
+    switch raw.lowercased() {
+    case "stop": return .stop
+    case "length", "max_tokens", "num_predict": return .length
+    case "tool_calls", "tool_call": return .toolCalls
+    default: return FinishReason(rawValue: raw)
+    }
   }
 }
 

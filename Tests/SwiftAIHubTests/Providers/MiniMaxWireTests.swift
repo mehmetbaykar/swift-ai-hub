@@ -54,7 +54,7 @@ private let miniMaxToolCallBody = """
         "tool_calls": [{
           "id": "call_1",
           "type": "function",
-          "function": {"name": "miniMaxEcho", "arguments": "{\\"text\\": \\"hi\\"}"}
+          "function": {"name": "mini_max_echo", "arguments": "{\\"text\\": \\"hi\\"}"}
         }]
       },
       "finish_reason": "tool_calls"
@@ -123,7 +123,7 @@ struct MiniMaxWireTests {
     #expect(messages.contains(where: userMessageContains("hello")))
     let tools = try #require(body["tools"] as? [[String: Any]])
     let fn = try #require(tools.first?["function"] as? [String: Any])
-    #expect(fn["name"] as? String == "miniMaxEcho")
+    #expect(fn["name"] as? String == "mini_max_echo")
   }
 
   // MARK: - W9 Usage + FinishReason (inherited via OpenAILanguageModel)

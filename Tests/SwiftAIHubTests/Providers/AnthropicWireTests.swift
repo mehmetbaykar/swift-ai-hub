@@ -18,6 +18,23 @@ struct AnthropicEchoTool {
   func execute(_ arguments: Arguments) async throws -> String { "echo: \(arguments.text)" }
 }
 
+@Generable(description: "A coordinate")
+struct AnthropicCoordinate {
+  var latitude: Double
+  var longitude: Double
+}
+
+/// Arguments nest a @Generable type, which the schema layer models as a
+/// `$ref` into `$defs` — the Anthropic conversion must inline it.
+@Tool("look up weather")
+struct AnthropicWeatherTool {
+  @Generable
+  struct Arguments {
+    @Parameter("where") var place: AnthropicCoordinate
+  }
+  func execute(_ arguments: Arguments) async throws -> String { "sunny" }
+}
+
 private let anthropicHost = "api.anthropic.test"
 
 private func makeAnthropicModel() -> AnthropicLanguageModel {
@@ -50,7 +67,7 @@ private let anthropicToolUseBody = """
     "content": [{
       "type": "tool_use",
       "id": "tu_1",
-      "name": "anthropicEcho",
+      "name": "anthropic_echo",
       "input": {"text": "hi"}
     }]
   }
@@ -166,7 +183,7 @@ struct AnthropicWireTests {
     // at the top level (no "function" wrapper like OpenAI chat).
     let tools = try #require(json["tools"] as? [[String: Any]])
     #expect(tools.count == 1)
-    #expect(tools[0]["name"] as? String == "anthropicEcho")
+    #expect(tools[0]["name"] as? String == "anthropic_echo")
     let inputSchema = try #require(tools[0]["input_schema"] as? [String: Any])
     #expect(inputSchema["type"] as? String == "object")
     let properties = try #require(inputSchema["properties"] as? [String: Any])
@@ -455,7 +472,7 @@ struct AnthropicWireTests {
       data: {"type":"message_start","message":{"id":"m1","type":"message","role":"assistant","model":"claude-test","stop_reason":null,"content":[]}}
 
       event: content_block_start
-      data: {"type":"content_block_start","index":0,"content_block":{"type":"tool_use","id":"tu_1","name":"anthropicEcho"}}
+      data: {"type":"content_block_start","index":0,"content_block":{"type":"tool_use","id":"tu_1","name":"anthropic_echo"}}
 
       event: content_block_delta
       data: {"type":"content_block_delta","index":0,"delta":{"type":"input_json_delta","partial_json":"{\\"text\\":\\"hi\\"}"}}
@@ -548,5 +565,113 @@ struct AnthropicWireTests {
     options.maximumResponseTokens = 16
     let response = try await session.respond(to: "Reply with the single word OK.", options: options)
     #expect(!response.content.isEmpty)
+  }
+
+  /// Anthropic rejects requests carrying both `temperature` and `top_p`;
+  /// when a caller sets both, temperature must win and top_p must be
+  /// dropped from the serialized body.
+  @Test func `temperature wins over top p when both set`() async throws {
+    await MockRequestScript.shared.reset(host: anthropicHost)
+    await MockRequestScript.shared.enqueue(
+      MockResponse(json: anthropicFinalAnswerBody), host: anthropicHost)
+
+    var options = GenerationOptions(temperature: 0.5)
+    options[custom: AnthropicLanguageModel.self] = .init(topP: 0.9)
+
+    let session = LanguageModelSession(model: makeAnthropicModel())
+    _ = try await session.respond(to: "hello", options: options)
+
+    let requests = await MockRequestScript.shared.observedRequests(host: anthropicHost)
+    let body = try #require(requests[0].httpBody)
+    let json = try #require(
+      try JSONSerialization.jsonObject(with: body) as? [String: Any])
+    #expect(json["temperature"] as? Double == 0.5)
+    #expect(json["top_p"] == nil)
+  }
+
+  @Test func `top p alone is sent`() async throws {
+    await MockRequestScript.shared.reset(host: anthropicHost)
+    await MockRequestScript.shared.enqueue(
+      MockResponse(json: anthropicFinalAnswerBody), host: anthropicHost)
+
+    var options = GenerationOptions()
+    options[custom: AnthropicLanguageModel.self] = .init(topP: 0.9)
+
+    let session = LanguageModelSession(model: makeAnthropicModel())
+    _ = try await session.respond(to: "hello", options: options)
+
+    let requests = await MockRequestScript.shared.observedRequests(host: anthropicHost)
+    let body = try #require(requests[0].httpBody)
+    let json = try #require(
+      try JSONSerialization.jsonObject(with: body) as? [String: Any])
+    #expect(json["top_p"] as? Double == 0.9)
+    #expect(json["temperature"] == nil)
+  }
+
+  /// Plain HTTP for a non-local host would carry the API key over
+  /// plaintext; the provider must refuse before sending anything.
+  @Test func `insecure base URL is rejected before any request`() async throws {
+    await MockRequestScript.shared.reset(host: anthropicHost)
+
+    let model = AnthropicLanguageModel(
+      baseURL: URL(string: "http://\(anthropicHost)/")!,
+      apiKey: "test-key",
+      model: "claude-test",
+      session: makeMockURLSession()
+    )
+    let session = LanguageModelSession(model: model)
+
+    await #expect(throws: AnthropicLanguageModelError.self) {
+      try await session.respond(to: "hello")
+    }
+    let consumed = await MockRequestScript.shared.consumedCount(host: anthropicHost)
+    #expect(consumed == 0)
+  }
+
+  /// Tools whose Arguments nest a @Generable type must serialize a
+  /// self-contained input_schema: the nested `$ref` is inlined because the
+  /// JSONSchema round-trip drops `$defs`, which would leave the reference
+  /// dangling.
+  @Test func `nested generable tool arguments inline refs in input schema`() async throws {
+    await MockRequestScript.shared.reset(host: anthropicHost)
+    await MockRequestScript.shared.enqueue(
+      MockResponse(json: anthropicFinalAnswerBody), host: anthropicHost)
+
+    let session = LanguageModelSession(
+      model: makeAnthropicModel(),
+      tools: [AnthropicWeatherTool()]
+    )
+    _ = try await session.respond(to: "weather please")
+
+    let requests = await MockRequestScript.shared.observedRequests(host: anthropicHost)
+    let body = try #require(requests[0].httpBody)
+    let json = try #require(
+      try JSONSerialization.jsonObject(with: body) as? [String: Any])
+    let tools = try #require(json["tools"] as? [[String: Any]])
+    let inputSchema = try #require(tools[0]["input_schema"] as? [String: Any])
+    let properties = try #require(inputSchema["properties"] as? [String: Any])
+    let place = try #require(properties["place"] as? [String: Any])
+    // The nested type must arrive inlined as an object, not a $ref.
+    #expect(place["$ref"] == nil)
+    #expect(place["type"] as? String == "object")
+    let placeProperties = try #require(place["properties"] as? [String: Any])
+    #expect(placeProperties["latitude"] != nil)
+    #expect(placeProperties["longitude"] != nil)
+  }
+
+  @Test func `localhost http base URL is allowed`() async throws {
+    await MockRequestScript.shared.reset(host: "127.0.0.1")
+    await MockRequestScript.shared.enqueue(
+      MockResponse(json: anthropicFinalAnswerBody), host: "127.0.0.1")
+
+    let model = AnthropicLanguageModel(
+      baseURL: URL(string: "http://127.0.0.1/")!,
+      apiKey: "test-key",
+      model: "claude-test",
+      session: makeMockURLSession()
+    )
+    let session = LanguageModelSession(model: model)
+    let response = try await session.respond(to: "hello")
+    #expect(response.content == "final answer")
   }
 }

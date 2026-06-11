@@ -54,7 +54,7 @@ private let huggingFaceToolCallBody = """
         "tool_calls": [{
           "id": "call_1",
           "type": "function",
-          "function": {"name": "huggingFaceEcho", "arguments": "{\\"text\\": \\"hi\\"}"}
+          "function": {"name": "hugging_face_echo", "arguments": "{\\"text\\": \\"hi\\"}"}
         }]
       },
       "finish_reason": "tool_calls"
@@ -131,7 +131,7 @@ struct HuggingFaceWireTests {
 
     let tools = try #require(body["tools"] as? [[String: Any]])
     let fn = try #require(tools.first?["function"] as? [String: Any])
-    #expect(fn["name"] as? String == "huggingFaceEcho")
+    #expect(fn["name"] as? String == "hugging_face_echo")
   }
 
   // MARK: - W8 phase 2 coverage

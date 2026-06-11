@@ -125,7 +125,7 @@ public struct GenerableMacro: MemberMacro, ExtensionMacro {
     else {
       return nil
     }
-    return stringLiteral.segments.description.trimmingCharacters(in: .init(charactersIn: "\""))
+    return StaticStringLiteral.value(of: stringLiteral)
   }
 
   private static func extractGuidedProperties(
@@ -178,9 +178,7 @@ public struct GenerableMacro: MemberMacro, ExtensionMacro {
             if arg.label?.text == "description",
               let stringLiteral = arg.expression.as(StringLiteralExprSyntax.self)
             {
-              description = stringLiteral.segments.description.trimmingCharacters(
-                in: .init(charactersIn: "\"")
-              )
+              description = StaticStringLiteral.value(of: stringLiteral)
               continue
             }
 
@@ -188,9 +186,7 @@ public struct GenerableMacro: MemberMacro, ExtensionMacro {
               arg.label == nil,
               let stringLiteral = arg.expression.as(StringLiteralExprSyntax.self)
             {
-              description = stringLiteral.segments.description.trimmingCharacters(
-                in: .init(charactersIn: "\"")
-              )
+              description = StaticStringLiteral.value(of: stringLiteral)
               continue
             }
 
@@ -213,10 +209,9 @@ public struct GenerableMacro: MemberMacro, ExtensionMacro {
               callee.baseName.text == "Regex",
               let firstArg = regexCall.arguments.first,
               let stringLiteral = firstArg.expression.as(StringLiteralExprSyntax.self),
-              let segment = stringLiteral.segments.first?.as(StringSegmentSyntax.self),
-              stringLiteral.segments.count == 1
+              let pattern = StaticStringLiteral.value(of: stringLiteral)
             {
-              constraints.pattern = segment.content.text
+              constraints.pattern = pattern
               continue
             }
             if looksLikeDynamicRegex(guideExpression) {
@@ -341,7 +336,7 @@ public struct GenerableMacro: MemberMacro, ExtensionMacro {
         let firstArg = functionCall.arguments.first,
         let stringLiteral = firstArg.expression.as(StringLiteralExprSyntax.self)
       {
-        return stringLiteral.segments.description.trimmingCharacters(in: .init(charactersIn: "\""))
+        return StaticStringLiteral.value(of: stringLiteral)
       }
     }
     return nil
@@ -384,16 +379,8 @@ public struct GenerableMacro: MemberMacro, ExtensionMacro {
   }
 
   /// Escapes text so it can be embedded safely inside generated Swift source as a string literal.
-  ///
-  /// Multi-line strings need newlines converted to `\n` escape sequences, and special characters
-  /// (backslashes and quotes) must be escaped.
   private static func makeSwiftStringLiteralExpression(_ value: String) -> String {
-    let escaped =
-      value
-      .replacingOccurrences(of: "\\", with: "\\\\")
-      .replacingOccurrences(of: "\"", with: "\\\"")
-      .replacingOccurrences(of: "\n", with: "\\n")
-    return "\"\(escaped)\""
+    StaticStringLiteral.sourceLiteral(value)
   }
 
   private static func buildGuidesArray(for property: PropertyInfo) -> String {
@@ -1064,7 +1051,7 @@ public struct GenerableMacro: MemberMacro, ExtensionMacro {
         nonisolated public static var generationSchema: GenerationSchema {
             return GenerationSchema(
                 type: Self.self,
-                description: \(description.map { "\"\($0)\"" } ?? "\"Generated \(structName)\""),
+                description: \(escapeDescriptionString(description ?? "Generated \(structName)")),
                 properties: [\(properties.isEmpty ? "" : "\n            \(propertySchemas)\n        ")]
             )
         }
@@ -1076,7 +1063,7 @@ public struct GenerableMacro: MemberMacro, ExtensionMacro {
     return DeclSyntax(
       stringLiteral: """
         nonisolated public func asPartiallyGenerated() -> PartiallyGenerated {
-            return try! PartiallyGenerated(_rawGeneratedContent)
+            return PartiallyGenerated(_rawGeneratedContent)
         }
         """
     )
@@ -1121,7 +1108,7 @@ public struct GenerableMacro: MemberMacro, ExtensionMacro {
 
             private let rawContent: GeneratedContent
 
-            public init(_ generatedContent: GeneratedContent) throws {
+            public init(_ generatedContent: GeneratedContent) {
                 self.id = generatedContent.id ?? GenerationID()
                 self.rawContent = generatedContent
 
@@ -1734,8 +1721,7 @@ public struct GenerableMacro: MemberMacro, ExtensionMacro {
           """
       }
       let branchesLiteral = branchLiterals.joined(separator: ",\n")
-      let descriptionLiteral =
-        description.map { "\"\($0)\"" } ?? "\"Generated \(enumName)\""
+      let descriptionLiteral = escapeDescriptionString(description ?? "Generated \(enumName)")
       _ = caseNames  // branches carry the case names individually
 
       return DeclSyntax(
@@ -1764,7 +1750,7 @@ public struct GenerableMacro: MemberMacro, ExtensionMacro {
           nonisolated public static var generationSchema: GenerationSchema {
               return GenerationSchema(
                   type: Self.self,
-                  description: \(description.map { "\"\($0)\"" } ?? "\"Generated \(enumName)\""),
+                  description: \(escapeDescriptionString(description ?? "Generated \(enumName)")),
                   anyOf: [\(caseNames)]
               )
           }

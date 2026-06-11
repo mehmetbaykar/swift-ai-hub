@@ -175,7 +175,7 @@
 
               private let rawContent: GeneratedContent
 
-              public init(_ generatedContent: GeneratedContent) throws {
+              public init(_ generatedContent: GeneratedContent) {
                   self.id = generatedContent.id ?? GenerationID()
                   self.rawContent = generatedContent
 
@@ -194,7 +194,7 @@
           }
 
           nonisolated public func asPartiallyGenerated() -> PartiallyGenerated {
-              return try! PartiallyGenerated(_rawGeneratedContent)
+              return PartiallyGenerated(_rawGeneratedContent)
           }
 
           nonisolated public var instructionsRepresentation: Instructions {
@@ -321,7 +321,7 @@
 
               private let rawContent: GeneratedContent
 
-              public init(_ generatedContent: GeneratedContent) throws {
+              public init(_ generatedContent: GeneratedContent) {
                   self.id = generatedContent.id ?? GenerationID()
                   self.rawContent = generatedContent
 
@@ -338,7 +338,7 @@
           }
 
           nonisolated public func asPartiallyGenerated() -> PartiallyGenerated {
-              return try! PartiallyGenerated(_rawGeneratedContent)
+              return PartiallyGenerated(_rawGeneratedContent)
           }
 
           nonisolated public var instructionsRepresentation: Instructions {
@@ -470,7 +470,7 @@
 
               private let rawContent: GeneratedContent
 
-              public init(_ generatedContent: GeneratedContent) throws {
+              public init(_ generatedContent: GeneratedContent) {
                   self.id = generatedContent.id ?? GenerationID()
                   self.rawContent = generatedContent
 
@@ -493,7 +493,7 @@
           }
 
           nonisolated public func asPartiallyGenerated() -> PartiallyGenerated {
-              return try! PartiallyGenerated(_rawGeneratedContent)
+              return PartiallyGenerated(_rawGeneratedContent)
           }
 
           nonisolated public var instructionsRepresentation: Instructions {
@@ -916,7 +916,7 @@
 
               private let rawContent: GeneratedContent
 
-              public init(_ generatedContent: GeneratedContent) throws {
+              public init(_ generatedContent: GeneratedContent) {
                   self.id = generatedContent.id ?? GenerationID()
                   self.rawContent = generatedContent
 
@@ -935,7 +935,7 @@
           }
 
           nonisolated public func asPartiallyGenerated() -> PartiallyGenerated {
-              return try! PartiallyGenerated(_rawGeneratedContent)
+              return PartiallyGenerated(_rawGeneratedContent)
           }
 
           nonisolated public var instructionsRepresentation: Instructions {
@@ -1064,7 +1064,7 @@
 
                 private let rawContent: GeneratedContent
 
-                public init(_ generatedContent: GeneratedContent) throws {
+                public init(_ generatedContent: GeneratedContent) {
                     self.id = generatedContent.id ?? GenerationID()
                     self.rawContent = generatedContent
 
@@ -1081,7 +1081,7 @@
             }
 
             nonisolated public func asPartiallyGenerated() -> PartiallyGenerated {
-                return try! PartiallyGenerated(_rawGeneratedContent)
+                return PartiallyGenerated(_rawGeneratedContent)
             }
 
             nonisolated public var instructionsRepresentation: Instructions {
@@ -1110,7 +1110,7 @@
           }
 
           public static let schema: SwiftAIHub.ToolSchema = SwiftAIHub.ToolSchema(
-              name: "getCurrentDate",
+              name: "get_current_date",
               description: "Returns the current date/time.",
               generationSchema: Arguments.generationSchema
           )
@@ -1275,7 +1275,7 @@
 
                 private let rawContent: GeneratedContent
 
-                public init(_ generatedContent: GeneratedContent) throws {
+                public init(_ generatedContent: GeneratedContent) {
                     self.id = generatedContent.id ?? GenerationID()
                     self.rawContent = generatedContent
 
@@ -1294,7 +1294,7 @@
             }
 
             nonisolated public func asPartiallyGenerated() -> PartiallyGenerated {
-                return try! PartiallyGenerated(_rawGeneratedContent)
+                return PartiallyGenerated(_rawGeneratedContent)
             }
 
             nonisolated public var instructionsRepresentation: Instructions {

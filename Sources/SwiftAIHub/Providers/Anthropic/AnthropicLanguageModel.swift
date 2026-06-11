@@ -336,6 +336,18 @@ public struct AnthropicLanguageModel: LanguageModel {
     self.httpSession = session
   }
 
+  /// Rejects plaintext transport before any request carries the API key:
+  /// HTTPS is required, with plain HTTP permitted only for localhost
+  /// development endpoints.
+  private func validateBaseURL() throws {
+    let scheme = baseURL.scheme?.lowercased()
+    let host = baseURL.host?.lowercased() ?? ""
+    let isLocalhost = host == "localhost" || host == "127.0.0.1" || host == "::1"
+    guard scheme == "https" || (isLocalhost && scheme == "http") else {
+      throw AnthropicLanguageModelError.insecureBaseURL(baseURL)
+    }
+  }
+
   public func respond<Content>(
     within session: LanguageModelSession,
     to prompt: Prompt,
@@ -343,6 +355,7 @@ public struct AnthropicLanguageModel: LanguageModel {
     includeSchemaInPrompt: Bool,
     options: GenerationOptions
   ) async throws -> LanguageModelSession.Response<Content> where Content: Generable {
+    try validateBaseURL()
     let url = baseURL.appendingPathComponent("v1/messages")
     let headers = buildHeaders()
     let resolvedTools = try await session.resolvedTools()
@@ -479,6 +492,7 @@ public struct AnthropicLanguageModel: LanguageModel {
         continuation in
         let task = Task { @Sendable in
           do {
+            try validateBaseURL()
             let headers = buildHeaders()
             let resolvedTools = try await session.resolvedTools()
 
@@ -703,7 +717,11 @@ private func createMessageParams(
 
   // Apply Anthropic-specific custom options
   if let customOptions = options[custom: AnthropicLanguageModel.self] {
-    if let topP = customOptions.topP {
+    // Anthropic's Messages API rejects requests that specify both
+    // `temperature` and `top_p` for current Claude models. When a caller
+    // sets both, temperature wins and top_p is dropped — matching the
+    // OpenAI provider's preference order.
+    if let topP = customOptions.topP, options.temperature == nil {
       params["top_p"] = .double(topP)
     }
     if let topK = customOptions.topK {
@@ -800,7 +818,10 @@ private func partialSnapshot<Content: Generable>(
 }
 
 private func convertSchemaToAnthropicFormat(_ schema: GenerationSchema) throws -> JSONSchema {
-  let resolvedSchema = schema.withResolvedRoot() ?? schema
+  // JSONSchema has no `$defs` container, so every `$ref` — root and
+  // nested — must be inlined before the round-trip or tools with nested
+  // @Generable arguments serialize dangling references.
+  let resolvedSchema = schema.resolvingNestedRefs()
   let data = try JSONEncoder().encode(resolvedSchema)
   return try JSONDecoder().decode(JSONSchema.self, from: data)
 }
@@ -1177,6 +1198,31 @@ private struct AnthropicMessageResponse: Codable, Sendable {
     case refusal = "refusal"
     case modelContextWindowExceeded = "model_context_window_exceeded"
   }
+}
+
+/// Errors produced by ``AnthropicLanguageModel`` before a request is sent.
+public enum AnthropicLanguageModelError: Error, CustomStringConvertible, Sendable {
+  /// The configured base URL would carry the API key over plaintext.
+  /// HTTPS is required; plain HTTP is allowed only for localhost.
+  case insecureBaseURL(URL)
+
+  public var description: String {
+    switch self {
+    case .insecureBaseURL(let url):
+      return
+        "Anthropic base URL must use HTTPS (plain HTTP is allowed only for localhost): \(url.absoluteString)"
+    }
+  }
+}
+
+extension AnthropicLanguageModelError: LanguageModelError {
+  public var httpStatus: Int? { nil }
+
+  public var providerMessage: String {
+    redactSensitiveHeaders(description)
+  }
+
+  public var isRetryable: Bool { false }
 }
 
 private struct AnthropicErrorResponse: Codable { let error: AnthropicErrorDetail }

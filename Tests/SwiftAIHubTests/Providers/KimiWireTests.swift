@@ -54,7 +54,7 @@ private let kimiToolCallBody = """
         "tool_calls": [{
           "id": "call_1",
           "type": "function",
-          "function": {"name": "kimiEcho", "arguments": "{\\"text\\": \\"hi\\"}"}
+          "function": {"name": "kimi_echo", "arguments": "{\\"text\\": \\"hi\\"}"}
         }]
       },
       "finish_reason": "tool_calls"
@@ -124,7 +124,7 @@ struct KimiWireTests {
     #expect(messages.contains(where: userMessageContains("hello")))
     let tools = try #require(body["tools"] as? [[String: Any]])
     let fn = try #require(tools.first?["function"] as? [String: Any])
-    #expect(fn["name"] as? String == "kimiEcho")
+    #expect(fn["name"] as? String == "kimi_echo")
   }
 
   // MARK: - W9 Usage + FinishReason (inherited via OpenAILanguageModel)

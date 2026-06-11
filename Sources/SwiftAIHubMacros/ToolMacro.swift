@@ -126,21 +126,43 @@ public struct ToolMacro: MemberMacro, ExtensionMacro {
   private static func extractDescription(from node: AttributeSyntax) -> String? {
     guard let arguments = node.arguments?.as(LabeledExprListSyntax.self),
       let firstArg = arguments.first,
-      let stringLiteral = firstArg.expression.as(StringLiteralExprSyntax.self),
-      let segment = stringLiteral.segments.first?.as(StringSegmentSyntax.self)
+      let stringLiteral = firstArg.expression.as(StringLiteralExprSyntax.self)
     else {
       return nil
     }
-    return segment.content.text
+    return StaticStringLiteral.value(of: stringLiteral)
   }
 
+  /// Derives the tool name from the type name: a trailing `Tool` suffix is
+  /// dropped and the remainder is snake_cased (`GetWeatherTool` →
+  /// `"get_weather"`), matching the tool-name conventions providers train
+  /// their models on. Acronym runs stay grouped: `OpenAIEchoTool` →
+  /// `"open_ai_echo"`, not `"open_a_i_echo"`.
   private static func deriveToolName(from typeName: String) -> String {
     var name = typeName
     if name.hasSuffix("Tool") {
       name = String(name.dropLast(4))
     }
-    guard let first = name.first else { return name }
-    return first.lowercased() + name.dropFirst()
+    var output = ""
+    let characters = Array(name)
+    for (index, character) in characters.enumerated() {
+      if character.isUppercase {
+        // Word boundary: an uppercase letter following a non-uppercase
+        // character, or ending an acronym run (next character is lowercase).
+        let previousIsLowercase = index > 0 && !characters[index - 1].isUppercase
+        let startsNewWord =
+          index + 1 < characters.count
+          && characters[index + 1].isLowercase
+          && index > 0 && characters[index - 1].isUppercase
+        if !output.isEmpty && (previousIsLowercase || startsNewWord) {
+          output.append("_")
+        }
+        output.append(character.lowercased())
+      } else {
+        output.append(character)
+      }
+    }
+    return output
   }
 
   private static func hasInit(in declaration: some DeclGroupSyntax) -> Bool {
@@ -427,12 +449,7 @@ public struct ToolMacro: MemberMacro, ExtensionMacro {
   // MARK: - Utilities
 
   private static func literalString(_ value: String) -> String {
-    let escaped =
-      value
-      .replacingOccurrences(of: "\\", with: "\\\\")
-      .replacingOccurrences(of: "\"", with: "\\\"")
-      .replacingOccurrences(of: "\n", with: "\\n")
-    return "\"\(escaped)\""
+    StaticStringLiteral.sourceLiteral(value)
   }
 }
 

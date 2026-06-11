@@ -47,7 +47,7 @@ private let geminiFunctionCallBody = """
       "content": {
         "role": "model",
         "parts": [{
-          "functionCall": {"name": "geminiEcho", "args": {"text": "hi"}}
+          "functionCall": {"name": "gemini_echo", "args": {"text": "hi"}}
         }]
       },
       "finishReason": "STOP"
@@ -119,7 +119,7 @@ struct GeminiWireTests {
 
     let tools = try #require(body["tools"] as? [[String: Any]])
     let decls = try #require(tools.first?["function_declarations"] as? [[String: Any]])
-    #expect(decls.contains { ($0["name"] as? String) == "geminiEcho" })
+    #expect(decls.contains { ($0["name"] as? String) == "gemini_echo" })
   }
 
   @Test func `max tool call rounds one throws on second function call`() async throws {
@@ -175,6 +175,30 @@ struct GeminiWireTests {
     let userText = firstParts.compactMap { $0["text"] as? String }.joined()
     #expect(userText.contains("hello"))
     #expect(!userText.contains("haiku"))
+  }
+
+  /// Gemini's newer safety finish reasons (BLOCKLIST, PROHIBITED_CONTENT,
+  /// SPII) must map onto `.contentFilter` like SAFETY/RECITATION, not fall
+  /// through to `.other`.
+  @Test func `blocklist finish reason maps to content filter`() async throws {
+    await MockRequestScript.shared.reset(host: geminiHost)
+    let body = """
+      {
+        "candidates": [{
+          "content": {
+            "role": "model",
+            "parts": [{"text": "blocked"}]
+          },
+          "finishReason": "BLOCKLIST"
+        }]
+      }
+      """
+    await MockRequestScript.shared.enqueue(MockResponse(json: body), host: geminiHost)
+
+    let session = LanguageModelSession(model: makeGeminiModel())
+    let response = try await session.respond(to: "hello")
+
+    #expect(response.finishReason == .contentFilter)
   }
 
   // I9b backward compat: with no instructions, no systemInstruction field
@@ -298,7 +322,7 @@ struct GeminiWireTests {
     // SSE events must carry a single-line JSON payload — EventSource parses each
     // `\n`-separated line as its own field, so multi-line JSON breaks the event.
     let functionCallJSON =
-      #"{"candidates":[{"content":{"role":"model","parts":[{"functionCall":{"name":"geminiEcho","args":{"text":"hi"}}}]},"finishReason":"STOP"}]}"#
+      #"{"candidates":[{"content":{"role":"model","parts":[{"functionCall":{"name":"gemini_echo","args":{"text":"hi"}}}]},"finishReason":"STOP"}]}"#
     let finalAnswerJSON =
       #"{"candidates":[{"content":{"role":"model","parts":[{"text":"final answer"}]},"finishReason":"STOP"}]}"#
     let sseFunctionCall = "data: \(functionCallJSON)\n\n"

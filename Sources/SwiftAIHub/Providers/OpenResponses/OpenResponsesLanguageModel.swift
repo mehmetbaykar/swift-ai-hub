@@ -549,7 +549,7 @@ public struct OpenResponsesLanguageModel: LanguageModel {
       }
 
       lastUsage = resp.usage?.hubUsage
-      lastFinishReason = resp.finishReason.map { FinishReason(rawValue: $0) }
+      lastFinishReason = resp.hubFinishReason
 
       let toolCalls = extractToolCallsFromOutput(resp.output)
       lastOutput = resp.output
@@ -785,6 +785,8 @@ private enum OpenResponsesAPI {
     let outputText: String?
     let error: OpenResponsesError?
     let finishReason: String?
+    let status: String?
+    let incompleteDetails: IncompleteDetails?
     let usage: OpenResponsesUsage?
 
     private enum CodingKeys: String, CodingKey {
@@ -793,7 +795,39 @@ private enum OpenResponsesAPI {
       case outputText = "output_text"
       case error
       case finishReason = "finish_reason"
+      case status
+      case incompleteDetails = "incomplete_details"
       case usage
+    }
+
+    struct IncompleteDetails: Decodable, Sendable {
+      let reason: String?
+    }
+
+    /// Hub finish reason for the response. An explicit `finish_reason`
+    /// (emitted by some open-source Responses implementations) wins;
+    /// otherwise the OpenAI-style `status` is mapped — `incomplete`
+    /// resolves through `incomplete_details.reason` and defaults to
+    /// ``FinishReason/length``, the dominant truncation cause.
+    var hubFinishReason: FinishReason? {
+      if let finishReason {
+        return FinishReason(rawValue: finishReason)
+      }
+      switch status {
+      case "cancelled", "canceled":
+        return .other("cancelled")
+      case "incomplete":
+        switch incompleteDetails?.reason {
+        case "content_filter":
+          return .contentFilter
+        case "max_output_tokens", "max_tokens", nil:
+          return .length
+        case .some(let reason):
+          return .other(reason)
+        }
+      default:
+        return nil
+      }
     }
   }
 
@@ -1200,6 +1234,10 @@ private enum OpenResponsesStreamEvent: Decodable, Sendable {
       self = .reasoningDelta(try c.decode(String.self, forKey: .delta))
     case "response.completed":
       self = .completed
+    // An incomplete response (token limit, content filter) still carries
+    // partial output — end the stream cleanly rather than failing it.
+    case "response.incomplete":
+      self = .completed
     case "response.failed":
       self = .failed
     default:
@@ -1242,7 +1280,10 @@ extension OpenResponsesLanguageModelError: LanguageModelError {
 
 extension GenerationSchema {
   fileprivate func toJSONValueForOpenResponsesStrictMode() throws -> JSONValue {
-    let resolved = withResolvedRoot() ?? self
+    // The JSONSchema round-trip below drops `$defs`, so nested `$ref`s must
+    // be inlined first or strict-mode schemas for nested @Generable types
+    // carry dangling references.
+    let resolved = resolvingNestedRefs()
     let encoder = JSONEncoder()
     encoder.userInfo[GenerationSchema.omitAdditionalPropertiesKey] = false
     let data = try encoder.encode(resolved)

@@ -43,6 +43,6 @@ struct ToolSourceTests {
 
     let tools = try await ([local] + remote).resolveTools()
 
-    #expect(tools.map(\.name) == ["localToolSource", "remoteToolSource"])
+    #expect(tools.map(\.name) == ["local_tool_source", "remote_tool_source"])
   }
 }

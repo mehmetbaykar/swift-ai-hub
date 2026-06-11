@@ -45,7 +45,7 @@ private let openResponsesToolCallBody = """
     "id": "resp_2",
     "output": [{
       "type": "function_call",
-      "name": "openResponsesEcho",
+      "name": "open_responses_echo",
       "call_id": "call_1",
       "arguments": "{\\"text\\": \\"hi\\"}"
     }]
@@ -110,7 +110,7 @@ struct OpenResponsesWireTests {
     // OpenResponses uses a flat `{type:"function", name, description, parameters}`
     // tool descriptor (not nested under `function:`).
     let tools = try #require(body["tools"] as? [[String: Any]])
-    let echoTool = try #require(tools.first { ($0["name"] as? String) == "openResponsesEcho" })
+    let echoTool = try #require(tools.first { ($0["name"] as? String) == "open_responses_echo" })
     #expect(echoTool["type"] as? String == "function")
     #expect(echoTool["parameters"] is [String: Any])
   }
@@ -190,5 +190,31 @@ struct OpenResponsesWireTests {
       #expect(info.retryAfter == 15)
       #expect(info.remainingTokens == 0)
     }
+  }
+
+  /// OpenAI-style Responses payloads carry truncation in `status` +
+  /// `incomplete_details` instead of `finish_reason`; an incomplete
+  /// response capped by output tokens must surface `.length`.
+  @Test func `incomplete status maps to length finish reason`() async throws {
+    await MockRequestScript.shared.reset(host: openResponsesHost)
+    let body = """
+      {
+        "id": "resp_incomplete",
+        "status": "incomplete",
+        "incomplete_details": {"reason": "max_output_tokens"},
+        "output": [{
+          "type": "message",
+          "role": "assistant",
+          "content": [{"type": "output_text", "text": "truncated"}]
+        }]
+      }
+      """
+    await MockRequestScript.shared.enqueue(MockResponse(json: body), host: openResponsesHost)
+
+    let session = LanguageModelSession(model: makeOpenResponsesModel())
+    let response = try await session.respond(to: "hello")
+
+    #expect(response.content == "truncated")
+    #expect(response.finishReason == .length)
   }
 }

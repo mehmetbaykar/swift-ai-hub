@@ -133,3 +133,31 @@ import Testing
     return
   }
 }
+
+// MARK: - Invalid guide inputs
+
+// Invalid inputs must degrade to unconstrained guides instead of emitting
+// unsatisfiable schema fragments (empty enum, negative minItems).
+
+@Test func `any of empty values degrades to unconstrained`() {
+  let guide = GenerationGuide<String>.anyOf([])
+  guard case .unspecified = guide.constraint else {
+    Issue.record("expected .unspecified, got \(guide.constraint)")
+    return
+  }
+}
+
+@Test func `negative array count guides degrade to unconstrained`() {
+  let guides: [GenerationGuide<[String]>] = [
+    .minimumCount(-1),
+    .maximumCount(-1),
+    .count(-2),
+    .count((-3)...4),
+  ]
+  for guide in guides {
+    guard case .unspecified = guide.constraint else {
+      Issue.record("expected .unspecified, got \(guide.constraint)")
+      return
+    }
+  }
+}

@@ -620,7 +620,10 @@ public struct GeminiLanguageModel: LanguageModel {
 }
 
 private func convertSchemaToGeminiFormat(_ schema: GenerationSchema) throws -> JSONSchema {
-  let resolvedSchema = schema.withResolvedRoot() ?? schema
+  // JSONSchema has no `$defs` container (and Gemini's OpenAPI-style schema
+  // does not support `$ref` at all), so every `$ref` — root and nested —
+  // must be inlined before the round-trip.
+  let resolvedSchema = schema.resolvingNestedRefs()
   let encoder = JSONEncoder()
   encoder.userInfo[GenerationSchema.omitAdditionalPropertiesKey] = true
   let data = try encoder.encode(resolvedSchema)
@@ -1148,7 +1151,7 @@ extension GeminiGenerateContentResponse {
     switch raw {
     case "STOP": return .stop
     case "MAX_TOKENS": return .length
-    case "SAFETY", "RECITATION": return .contentFilter
+    case "SAFETY", "RECITATION", "BLOCKLIST", "PROHIBITED_CONTENT", "SPII": return .contentFilter
     case "MALFORMED_FUNCTION_CALL", "TOOL_CODE": return .toolCalls
     case "OTHER": return .other("OTHER")
     default: return .other(raw)

@@ -2198,7 +2198,10 @@ extension GenerationSchema {
   /// 1. `additionalProperties: false` at the root
   /// 2. All properties (including optional ones) listed in `required`
   fileprivate func toJSONValueForOpenAIStrictMode() throws -> JSONValue {
-    let resolvedSchema = self.withResolvedRoot() ?? self
+    // The JSONSchema round-trip below drops `$defs`, so nested `$ref`s must
+    // be inlined first or strict-mode schemas for nested @Generable types
+    // carry dangling references.
+    let resolvedSchema = self.resolvingNestedRefs()
 
     let encoder = JSONEncoder()
     encoder.userInfo[GenerationSchema.omitAdditionalPropertiesKey] = false

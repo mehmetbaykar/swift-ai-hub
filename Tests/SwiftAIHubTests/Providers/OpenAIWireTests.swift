@@ -68,7 +68,7 @@ private let chatToolCallBody = """
         "tool_calls": [{
           "id": "call_1",
           "type": "function",
-          "function": {"name": "openAIEcho", "arguments": "{\\"text\\": \\"hi\\"}"}
+          "function": {"name": "open_ai_echo", "arguments": "{\\"text\\": \\"hi\\"}"}
         }]
       },
       "finish_reason": "tool_calls"
@@ -94,7 +94,7 @@ private let responsesToolCallBody = """
     "id": "resp_2",
     "output": [{
       "type": "function_call",
-      "name": "openAIEcho",
+      "name": "open_ai_echo",
       "call_id": "call_1",
       "arguments": "{\\"text\\": \\"hi\\"}"
     }]
@@ -187,7 +187,7 @@ struct OpenAIWireTests {
     let tool = tools[0]
     #expect(tool["type"] as? String == "function")
     let function = try #require(tool["function"] as? [String: Any])
-    #expect(function["name"] as? String == "openAIEcho")
+    #expect(function["name"] as? String == "open_ai_echo")
     let parameters = try #require(function["parameters"] as? [String: Any])
     #expect(parameters["type"] as? String == "object")
     let properties = try #require(parameters["properties"] as? [String: Any])
@@ -297,7 +297,7 @@ struct OpenAIWireTests {
     #expect(tools.count == 1)
     let tool = tools[0]
     #expect(tool["type"] as? String == "function")
-    #expect(tool["name"] as? String == "openAIEcho")
+    #expect(tool["name"] as? String == "open_ai_echo")
     #expect(tool["function"] == nil)
     let parameters = try #require(tool["parameters"] as? [String: Any])
     #expect(parameters["type"] as? String == "object")

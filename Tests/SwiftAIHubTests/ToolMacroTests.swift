@@ -38,7 +38,7 @@ struct EchoTool {
 }
 
 @Test func `tool schema derives name from type`() {
-  #expect(GetCurrentDateTool.schema.name == "getCurrentDate")
+  #expect(GetCurrentDateTool.schema.name == "get_current_date")
   #expect(EchoTool.schema.name == "echo")
 }
 
@@ -54,7 +54,7 @@ struct EchoTool {
 
 @Test func `tool instance exposes protocol properties`() {
   let tool = GetCurrentDateTool()
-  #expect(tool.name == "getCurrentDate")
+  #expect(tool.name == "get_current_date")
   #expect(tool.description == "Returns the current date/time.")
   _ = tool.parameters
 }
@@ -112,7 +112,7 @@ struct FlatEchoTool {
 }
 
 @Test func `flat tool schema derives name from type`() {
-  #expect(FlatEchoTool.schema.name == "flatEcho")
+  #expect(FlatEchoTool.schema.name == "flat_echo")
 }
 
 @Test func `flat tool exposes synthesised Arguments`() throws {
