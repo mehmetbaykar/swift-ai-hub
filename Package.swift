@@ -40,7 +40,7 @@ let package = Package(
       revision: "7e2b7107be52ffbfe488f3c7987d3f52c1858b4b"),
     .package(url: "https://github.com/huggingface/swift-transformers", from: "1.0.0"),
     .package(url: "https://github.com/huggingface/swift-huggingface", branch: "main"),
-    .package(url: "https://github.com/mattt/llama.swift", .upToNextMajor(from: "2.7484.0")),
+    .package(url: "https://github.com/mattt/llama.swift", .upToNextMajor(from: "2.10322.0")),
     .package(url: "https://github.com/mattt/PartialJSONDecoder", from: "1.0.0"),
     .package(url: "https://github.com/swift-server/async-http-client.git", from: "1.24.0"),
     .package(url: "https://github.com/modelcontextprotocol/swift-sdk", from: "0.12.0"),
