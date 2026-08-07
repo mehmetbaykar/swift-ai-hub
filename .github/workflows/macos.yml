@@ -22,7 +22,7 @@ jobs:
     name: macOS swift build + test (no traits)
     runs-on: macos-26
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - name: Cache SPM
         uses: actions/cache@v6
         with:
@@ -42,7 +42,7 @@ jobs:
     name: macOS swift test (MLX, CoreML, Llama, FoundationModels)
     runs-on: macos-26
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - name: Cache SPM
         uses: actions/cache@v6
         with:
@@ -62,7 +62,7 @@ jobs:
       matrix:
         platform: [iOS, tvOS, watchOS, visionOS]
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - name: Cache SPM
         uses: actions/cache@v6
         with:
