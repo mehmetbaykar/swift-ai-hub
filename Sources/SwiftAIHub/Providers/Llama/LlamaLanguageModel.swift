@@ -699,9 +699,8 @@ import Foundation
       // Force CPU-only execution to avoid Metal GPU issues
       params.n_gpu_layers = 0
 
-      // Try to reduce memory usage
-      params.use_mmap = true
-      params.use_mlock = false
+      // Use memory mapping without locking pages
+      params.load_mode = LLAMA_LOAD_MODE_MMAP
       return params
     }
 
@@ -862,6 +861,7 @@ import Foundation
         llama_sampler_chain_add(
           samplerPtr,
           llama_sampler_init_penalties(
+            llama_vocab_n_tokens(vocab),
             effectiveRepeatLastN,
             effectiveRepeatPenalty,
             effectiveFrequencyPenalty,
@@ -994,6 +994,7 @@ import Foundation
         llama_sampler_chain_add(
           samplerPointer,
           llama_sampler_init_penalties(
+            llama_vocab_n_tokens(vocab),
             options.repeatLastN,
             options.repeatPenalty,
             options.frequencyPenalty,
@@ -1235,6 +1236,7 @@ import Foundation
           llama_sampler_chain_add(
             samplerPtr,
             llama_sampler_init_penalties(
+              llama_vocab_n_tokens(vocab),
               effectiveRepeatLastN,
               effectiveRepeatPenalty,
               effectiveFrequencyPenalty,
