@@ -125,14 +125,14 @@ extension Tool {
     let parsedArguments = try Arguments(arguments)
     let output = try await call(arguments: parsedArguments)
 
+    if let stringOutput = output as? String {
+      return [Transcript.Segment.text(.init(content: stringOutput))]
+    }
+
     if let structured = output as? any ConvertibleToGeneratedContent {
       let content = structured.generatedContent
       let segment = Transcript.Segment.structure(.init(source: name, content: content))
       return [segment]
-    }
-
-    if let stringOutput = output as? String {
-      return [Transcript.Segment.text(.init(content: stringOutput))]
     }
 
     let fallback = output.promptRepresentation.description
