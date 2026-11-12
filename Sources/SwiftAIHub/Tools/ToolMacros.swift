@@ -34,15 +34,32 @@
 /// In both forms, plain stored properties on the tool struct (without
 /// `@Parameter`/`@Guide`) survive as init-injected dependencies — API keys,
 /// `any LanguageModel`, etc.
+///
+/// Optional annotation arguments publish a display title and behavior hints
+/// via ``Tool/annotations``. `nil` (or omitting an argument) means no
+/// statement — the consumer applies its own default:
+///
+///     @Tool(
+///         "Search the Apple developer documentation",
+///         title: "Search Apple Documentation",
+///         readOnly: true
+///     )
+///     struct SearchDocsTool { ... }
 @attached(
   member,
   names: named(name), named(description), named(parameters),
-  named(init), named(call), named(schema),
+  named(annotations), named(init), named(call), named(schema),
   named(Output), named(Arguments)
 )
 @attached(extension, conformances: Tool, Sendable)
-public macro Tool(_ description: String) =
-  #externalMacro(module: "SwiftAIHubMacros", type: "ToolMacro")
+public macro Tool(
+  _ description: String,
+  title: String? = nil,
+  readOnly: Bool? = nil,
+  destructive: Bool? = nil,
+  idempotent: Bool? = nil,
+  openWorld: Bool? = nil
+) = #externalMacro(module: "SwiftAIHubMacros", type: "ToolMacro")
 
 /// Marks a property as an LLM-visible tool parameter. Valid in two contexts:
 ///

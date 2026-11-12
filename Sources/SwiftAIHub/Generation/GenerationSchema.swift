@@ -83,7 +83,7 @@ public struct GenerationSchema: Equatable, Codable, CustomDebugStringConvertible
           try propsContainer.encode(
             node, forKey: GenerationSchema.DynamicCodingKey(stringValue: name)!)
         }
-        try container.encode(Array(obj.required), forKey: .required)
+        try container.encode(obj.required.sorted(), forKey: .required)
 
         // Check userInfo to see if additionalProperties should be omitted
         let shouldOmit =

@@ -61,6 +61,12 @@ public protocol Tool<Arguments, Output>: Sendable {
   /// A schema for the parameters this tool accepts.
   var parameters: GenerationSchema { get }
 
+  /// Optional display title and behavior hints for consumers of this tool.
+  ///
+  /// See ``ToolAnnotations`` for the meaning of each field. The default is an
+  /// empty ``ToolAnnotations`` value (`isEmpty == true`).
+  var annotations: ToolAnnotations { get }
+
   /// If true, the model's name, description, and parameters schema will be injected
   /// into the instructions of sessions that leverage this tool.
   ///
@@ -97,6 +103,11 @@ extension Tool {
     String(describing: Self.self)
   }
 
+  /// Optional display title and behavior hints. Defaults to an empty value.
+  public var annotations: ToolAnnotations {
+    ToolAnnotations()
+  }
+
   /// If true, the model's name, description, and parameters schema will be injected
   /// into the instructions of sessions that leverage this tool.
   ///
@@ -125,14 +136,14 @@ extension Tool {
     let parsedArguments = try Arguments(arguments)
     let output = try await call(arguments: parsedArguments)
 
+    if let stringOutput = output as? String {
+      return [Transcript.Segment.text(.init(content: stringOutput))]
+    }
+
     if let structured = output as? any ConvertibleToGeneratedContent {
       let content = structured.generatedContent
       let segment = Transcript.Segment.structure(.init(source: name, content: content))
       return [segment]
-    }
-
-    if let stringOutput = output as? String {
-      return [Transcript.Segment.text(.init(content: stringOutput))]
     }
 
     let fallback = output.promptRepresentation.description

@@ -9,13 +9,26 @@ nested payloads, structured-output return types). `@Parameter` and
 `@Guide` are property-level markers `@Generable` reads when it builds
 the schema.
 
-## `@Tool("description")`
+## `@Tool`
+
+```swift
+@Tool(
+  _ description: String,
+  title: String? = nil,
+  readOnly: Bool? = nil,
+  destructive: Bool? = nil,
+  idempotent: Bool? = nil,
+  openWorld: Bool? = nil
+)
+```
 
 Implementation: `Sources/SwiftAIHubMacros/ToolMacro.swift`.
 
 Contract: applied to a `struct`, it adds `Tool, Sendable` conformance,
 synthesises a `ToolSchema`, and exposes the user's `execute()` or
-`execute(_:)` method through a `call(arguments:)` dispatcher.
+`execute(_:)` method through a `call(arguments:)` dispatcher. Optional
+annotation arguments populate `Tool.annotations` for consumers (for example
+an MCP bridge).
 
 ### Rules
 
@@ -36,13 +49,21 @@ synthesises a `ToolSchema`, and exposes the user's `execute()` or
   are treated as init-injected dependencies and stay invisible to the model.
 - The description must be a string literal; the macro errors when it cannot
   extract one.
+- Annotation arguments (all optional; `nil` / omitted means no statement):
+  - `title` — human-readable display name
+  - `readOnly` — hint that the tool does not change its environment
+  - `destructive` — hint that the tool can make destructive changes (meaningful
+    when not read-only)
+  - `idempotent` — hint that repeating the same call has no additional effect
+  - `openWorld` — hint that the tool interacts with external entities (for
+    example the web)
 
 ### Flat example
 
 ```swift
 import SwiftAIHub
 
-@Tool("Echo a city")
+@Tool("Echo a city", title: "Echo City", readOnly: true)
 public struct CityTool {
   @Parameter("The city name")
   public var location: String = ""
