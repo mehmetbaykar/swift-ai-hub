@@ -61,6 +61,11 @@ public struct ToolMacro: MemberMacro, ExtensionMacro {
       "public var parameters: SwiftAIHub.GenerationSchema { Self.schema.generationSchema }"
     )
 
+    let annotations = try extractAnnotations(from: node)
+    if let annotationsMember = generateAnnotationsMember(from: annotations) {
+      members.append(annotationsMember)
+    }
+
     members.append(generateSchemaProperty(toolName: toolName, description: description))
 
     // Only synthesize `init()` when it would actually compile. If the user
@@ -446,6 +451,103 @@ public struct ToolMacro: MemberMacro, ExtensionMacro {
       """
   }
 
+  // MARK: - Annotations
+
+  private struct ParsedAnnotations {
+    var title: String?
+    var readOnly: Bool?
+    var destructive: Bool?
+    var idempotent: Bool?
+    var openWorld: Bool?
+
+    var hasAnyValue: Bool {
+      title != nil || readOnly != nil || destructive != nil || idempotent != nil
+        || openWorld != nil
+    }
+  }
+
+  private static func extractAnnotations(from node: AttributeSyntax) throws -> ParsedAnnotations {
+    var parsed = ParsedAnnotations()
+    guard let arguments = node.arguments?.as(LabeledExprListSyntax.self) else {
+      return parsed
+    }
+
+    for argument in arguments {
+      guard let label = argument.label?.text else { continue }
+      switch label {
+      case "title":
+        parsed.title = try parseTitleArgument(argument.expression)
+      case "readOnly":
+        parsed.readOnly = try parseHintArgument(argument.expression, name: "readOnly")
+      case "destructive":
+        parsed.destructive = try parseHintArgument(argument.expression, name: "destructive")
+      case "idempotent":
+        parsed.idempotent = try parseHintArgument(argument.expression, name: "idempotent")
+      case "openWorld":
+        parsed.openWorld = try parseHintArgument(argument.expression, name: "openWorld")
+      default:
+        continue
+      }
+    }
+    return parsed
+  }
+
+  private static func parseTitleArgument(_ expression: ExprSyntax) throws -> String? {
+    if expression.is(NilLiteralExprSyntax.self) {
+      return nil
+    }
+    guard let stringLiteral = expression.as(StringLiteralExprSyntax.self),
+      let value = StaticStringLiteral.value(of: stringLiteral)
+    else {
+      throw MacroError.invalidTitleLiteral
+    }
+    return value
+  }
+
+  private static func parseHintArgument(_ expression: ExprSyntax, name: String) throws -> Bool? {
+    if expression.is(NilLiteralExprSyntax.self) {
+      return nil
+    }
+    guard let boolLiteral = expression.as(BooleanLiteralExprSyntax.self) else {
+      throw MacroError.invalidHintLiteral(argument: name)
+    }
+    switch boolLiteral.literal.tokenKind {
+    case .keyword(.true):
+      return true
+    case .keyword(.false):
+      return false
+    default:
+      throw MacroError.invalidHintLiteral(argument: name)
+    }
+  }
+
+  private static func generateAnnotationsMember(from annotations: ParsedAnnotations) -> DeclSyntax?
+  {
+    guard annotations.hasAnyValue else { return nil }
+
+    var parts: [String] = []
+    if let title = annotations.title {
+      parts.append("title: \(literalString(title))")
+    }
+    if let readOnly = annotations.readOnly {
+      parts.append("readOnly: \(readOnly)")
+    }
+    if let destructive = annotations.destructive {
+      parts.append("destructive: \(destructive)")
+    }
+    if let idempotent = annotations.idempotent {
+      parts.append("idempotent: \(idempotent)")
+    }
+    if let openWorld = annotations.openWorld {
+      parts.append("openWorld: \(openWorld)")
+    }
+
+    let argumentList = parts.joined(separator: ", ")
+    return """
+      public var annotations: SwiftAIHub.ToolAnnotations { SwiftAIHub.ToolAnnotations(\(raw: argumentList)) }
+      """
+  }
+
   // MARK: - Utilities
 
   private static func literalString(_ value: String) -> String {
@@ -460,6 +562,8 @@ enum MacroError: Error, CustomStringConvertible {
   case onlyApplicableToStruct
   case ambiguousForm
   case emptyForm
+  case invalidTitleLiteral
+  case invalidHintLiteral(argument: String)
 
   var description: String {
     switch self {
@@ -473,6 +577,10 @@ enum MacroError: Error, CustomStringConvertible {
     case .emptyForm:
       return
         "@Tool struct must declare its parameters in one of two ways: either a nested `@Generable struct Arguments { ... }` plus `func execute(_ arguments: Arguments)`, or @Parameter properties directly on the struct plus `func execute()`. Tools that take no arguments still need an explicit `@Generable struct Arguments {}`."
+    case .invalidTitleLiteral:
+      return "@Tool `title` must be a string literal or `nil`"
+    case .invalidHintLiteral(let argument):
+      return "@Tool `\(argument)` must be a `true` or `false` literal"
     }
   }
 }
