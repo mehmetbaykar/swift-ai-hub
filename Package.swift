@@ -27,15 +27,18 @@ let package = Package(
         "Opt-in to AsyncHTTPClient-based transport; default is URLSession only. Off by default."),
   ],
   dependencies: [
-    // Cap at 603.x: mlx-swift-lm (through 3.33.0 and main) requires swift-syntax <604.
+    // Cap at 603.x: the pinned mlx-swift-lm revision requires swift-syntax <604.
     .package(url: "https://github.com/swiftlang/swift-syntax.git", from: "603.0.2"),
     .package(url: "https://github.com/apple/swift-log.git", from: "1.17.2"),
     .package(url: "https://github.com/apple/swift-collections.git", from: "1.7.6"),
     .package(url: "https://github.com/mattt/JSONSchema.git", from: "1.3.1"),
     .package(url: "https://github.com/mattt/EventSource.git", from: "1.6.0"),
-    // 3.31.4+ widens swift-syntax to 602..<604 (3.31.3 used from: 600.0.0-latest / <601).
-    // Still no tag accepts 604; keep our swift-syntax floor on 603.x until mlx-swift-lm does.
-    .package(url: "https://github.com/ml-explore/mlx-swift-lm", from: "3.33.0"),
+    // Pinned to a main-branch commit (post-3.31.3) that widens its swift-syntax range
+    // to <604; the 3.31.3 tag pins <601, which conflicts with our macros target on
+    // Swift 6.2.x toolchains. Move back to a `from:` once a 3.31.4+ tag ships.
+    .package(
+      url: "https://github.com/ml-explore/mlx-swift-lm",
+      revision: "7e2b7107be52ffbfe488f3c7987d3f52c1858b4b"),
     .package(url: "https://github.com/huggingface/swift-transformers", from: "1.4.0"),
     .package(url: "https://github.com/huggingface/swift-huggingface", from: "1.0.1"),
     .package(url: "https://github.com/mattt/llama.swift", .upToNextMajor(from: "3.0.0")),
