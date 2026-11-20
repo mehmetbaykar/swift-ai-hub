@@ -13,6 +13,7 @@
 //   4. @Guide(Regex) pattern propagation (regression for 91e2948)
 //   5. @Tool simple (top-level with execute + nested Arguments)
 //   6. @Tool + @Parameter (tool with @Parameter-marked Arguments field)
+//   7. @Tool with title: and readOnly: (emits annotations member)
 //
 // Scope note: MacroTesting 0.6.x's `.macros(_:)` trait takes only
 // `[String: Macro.Type]`; there's no public knob to declare the macro's
@@ -1346,6 +1347,191 @@
         extension EchoTool: SwiftAIHub.Tool, Swift.Sendable {
         }
         """
+      }
+    }
+
+    // 7. @Tool with title: and readOnly: — emits annotations member.
+    @Test func `tool with title and readOnly annotations`() {
+      assertMacro {
+        """
+        @Tool("Search docs", title: "Search Apple Documentation", readOnly: true)
+        struct SearchDocsTool {
+          @Generable
+          struct Arguments {
+            @Guide(description: "Search query")
+            var query: String
+          }
+
+          func execute(_ arguments: Arguments) async throws -> String {
+            arguments.query
+          }
+        }
+        """
+      } expansion: {
+        #"""
+        struct SearchDocsTool {
+          struct Arguments {
+            var query: String
+
+            private let _rawGeneratedContent: GeneratedContent
+
+            nonisolated public init(query: String) {
+                self.query = query
+
+                var properties: [String: GeneratedContent] = [:]
+                properties["query"] = GeneratedContent(query)
+
+                self._rawGeneratedContent = GeneratedContent(
+                    kind: .structure(
+                        properties: properties,
+                        orderedKeys: ["query"]
+                    )
+                )
+            }
+
+            nonisolated public init(_ generatedContent: GeneratedContent) throws {
+                struct MissingFieldKey: CodingKey {
+                    var stringValue: String
+                    var intValue: Int? {
+                      nil
+                    }
+                    init(stringValue: String) {
+                      self.stringValue = stringValue
+                    }
+                    init?(intValue: Int) {
+                      nil
+                    }
+                }
+
+                self._rawGeneratedContent = generatedContent
+
+                guard case .structure(let properties, _) = generatedContent.kind else {
+                    throw DecodingError.typeMismatch(
+                        Arguments.self,
+                        DecodingError.Context(codingPath: [], debugDescription: "Expected structure for Arguments")
+                    )
+                }
+
+                if let value = properties["query"] {
+                switch value.kind {
+                case .null:
+                    throw DecodingError.valueNotFound(
+                        String.self,
+                        DecodingError.Context(codingPath: [], debugDescription: "Required property 'query' was null")
+                    )
+                default:
+                    self.query = try value.value(String.self)
+                }
+                } else {
+                throw DecodingError.keyNotFound(
+                    MissingFieldKey(stringValue: "query"),
+                    DecodingError.Context(codingPath: [], debugDescription: "Missing required property 'query'")
+                )
+                }
+            }
+
+            nonisolated public var generatedContent: GeneratedContent {
+                var properties: [String: GeneratedContent] = [:]
+                properties["query"] = GeneratedContent(query)
+
+                return GeneratedContent(
+                    kind: .structure(
+                        properties: properties,
+                        orderedKeys: ["query"]
+                    )
+                )
+            }
+
+            nonisolated public static var generationSchema: GenerationSchema {
+                return GenerationSchema(
+                    type: Self.self,
+                    description: "Generated Arguments",
+                    properties: [
+                        GenerationSchema.Property(
+                            name: "query",
+                            description: "Search query",
+                            type: String.self,
+                            guides: []
+                        )
+                    ]
+                )
+            }
+
+            public struct PartiallyGenerated: Identifiable, Sendable, ConvertibleFromGeneratedContent {
+                public var id: GenerationID
+
+                public let query: String?
+
+                private let rawContent: GeneratedContent
+
+                public init(_ generatedContent: GeneratedContent) {
+                    self.id = generatedContent.id ?? GenerationID()
+                    self.rawContent = generatedContent
+
+                    if case .structure(let properties, _) = generatedContent.kind {
+                        self.query = try? properties["query"]?.value(String.self)
+                    } else {
+                        self.query = nil
+                    }
+                }
+
+                public var generatedContent: GeneratedContent {
+                    return rawContent
+                }
+            }
+
+            nonisolated public func asPartiallyGenerated() -> PartiallyGenerated {
+                return PartiallyGenerated(_rawGeneratedContent)
+            }
+
+            nonisolated public var instructionsRepresentation: Instructions {
+                return Instructions(self.generatedContent.jsonString)
+            }
+
+            nonisolated public var promptRepresentation: Prompt {
+                return Prompt(self.generatedContent.jsonString)
+            }
+          }
+
+          func execute(_ arguments: Arguments) async throws -> String {
+            arguments.query
+          }
+
+          public var name: String {
+            Self.schema.name
+          }
+
+          public var description: String {
+            Self.schema.description
+          }
+
+          public var parameters: SwiftAIHub.GenerationSchema {
+            Self.schema.generationSchema
+          }
+
+          public var annotations: SwiftAIHub.ToolAnnotations {
+            SwiftAIHub.ToolAnnotations(title: "Search Apple Documentation", readOnly: true)
+          }
+
+          public static let schema: SwiftAIHub.ToolSchema = SwiftAIHub.ToolSchema(
+              name: "search_docs",
+              description: "Search docs",
+              generationSchema: Arguments.generationSchema
+          )
+
+          public init() {
+          }
+
+          public typealias Output = String
+
+          public func call(arguments: Arguments) async throws -> Output {
+              try await self.execute(arguments)
+          }
+        }
+
+        extension SearchDocsTool: SwiftAIHub.Tool, Swift.Sendable {
+        }
+        """#
       }
     }
   }

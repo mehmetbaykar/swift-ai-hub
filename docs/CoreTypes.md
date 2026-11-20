@@ -251,6 +251,7 @@ public protocol Tool<Arguments, Output>: Sendable {
   var name: String { get }
   var description: String { get }
   var parameters: GenerationSchema { get }
+  var annotations: ToolAnnotations { get }          // default: empty
   var includesSchemaInInstructions: Bool { get }   // default: true
   func call(arguments: Arguments) async throws -> Output
   func makeOutputSegments(from arguments: GeneratedContent) async throws -> [Transcript.Segment]

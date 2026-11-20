@@ -49,7 +49,7 @@ package traits; opt in only what you need.
 Declare a tool as a struct, hand it to the session, let the loop run:
 
 ```swift
-@Tool("Get weather for a location")
+@Tool("Get weather for a location", title: "Get Weather", readOnly: true)
 struct WeatherTool {
   @Parameter("City or coordinates") var location: String
 
