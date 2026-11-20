@@ -65,6 +65,8 @@ let session = LanguageModelSession(
 let reply = try await session.respond(to: "What's the weather in Berlin?")
 ```
 
+Pass `name:` on `@Tool` when you need a stable override of the derived snake_case name (for example `name: "getWeather"`).
+
 Tools with richer parameter schemas — nested types, recursive `@Generable`,
 shared `$ref` schemas, or DocC documentation on the parameter container — can
 use the explicit nested-`Arguments` form instead:
