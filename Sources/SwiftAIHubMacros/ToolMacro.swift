@@ -40,7 +40,8 @@ public struct ToolMacro: MemberMacro, ExtensionMacro {
     }
 
     let typeName = structDecl.name.text
-    let toolName = deriveToolName(from: typeName)
+    let derivedName = deriveToolName(from: typeName)
+    let toolName = try extractName(from: node) ?? derivedName
     let userReturnType = extractUserExecuteReturnType(from: declaration)
     let form = detectForm(in: declaration)
 
@@ -492,6 +493,48 @@ public struct ToolMacro: MemberMacro, ExtensionMacro {
     return parsed
   }
 
+  /// Reads the optional `name:` argument. A static string literal replaces
+  /// the derived tool name; `nil` / omitted keeps the derived name. Any other
+  /// expression is a macro error.
+  private static func extractName(from node: AttributeSyntax) throws -> String? {
+    guard let arguments = node.arguments?.as(LabeledExprListSyntax.self) else {
+      return nil
+    }
+    for argument in arguments {
+      guard argument.label?.text == "name" else { continue }
+      return try parseNameArgument(argument.expression)
+    }
+    return nil
+  }
+
+  private static func parseNameArgument(_ expression: ExprSyntax) throws -> String? {
+    if expression.is(NilLiteralExprSyntax.self) {
+      return nil
+    }
+    guard let stringLiteral = expression.as(StringLiteralExprSyntax.self),
+      let value = StaticStringLiteral.value(of: stringLiteral)
+    else {
+      throw MacroError.invalidNameLiteral
+    }
+    guard isValidToolName(value) else {
+      throw MacroError.invalidNameValue
+    }
+    return value
+  }
+
+  /// OpenAI / Anthropic function-name rule: `^[a-zA-Z0-9_-]{1,64}$`.
+  private static func isValidToolName(_ name: String) -> Bool {
+    guard (1...64).contains(name.count) else { return false }
+    return name.unicodeScalars.allSatisfy { scalar in
+      switch scalar {
+      case "A"..."Z", "a"..."z", "0"..."9", "_", "-":
+        return true
+      default:
+        return false
+      }
+    }
+  }
+
   private static func parseTitleArgument(_ expression: ExprSyntax) throws -> String? {
     if expression.is(NilLiteralExprSyntax.self) {
       return nil
@@ -562,6 +605,8 @@ enum MacroError: Error, CustomStringConvertible {
   case onlyApplicableToStruct
   case ambiguousForm
   case emptyForm
+  case invalidNameLiteral
+  case invalidNameValue
   case invalidTitleLiteral
   case invalidHintLiteral(argument: String)
 
@@ -577,6 +622,10 @@ enum MacroError: Error, CustomStringConvertible {
     case .emptyForm:
       return
         "@Tool struct must declare its parameters in one of two ways: either a nested `@Generable struct Arguments { ... }` plus `func execute(_ arguments: Arguments)`, or @Parameter properties directly on the struct plus `func execute()`. Tools that take no arguments still need an explicit `@Generable struct Arguments {}`."
+    case .invalidNameLiteral:
+      return "@Tool `name` must be a string literal or `nil`"
+    case .invalidNameValue:
+      return "@Tool `name` must be 1 to 64 characters of A-Z, a-z, 0-9, `_`, or `-`"
     case .invalidTitleLiteral:
       return "@Tool `title` must be a string literal or `nil`"
     case .invalidHintLiteral(let argument):

@@ -14,6 +14,7 @@ the schema.
 ```swift
 @Tool(
   _ description: String,
+  name: String? = nil,
   title: String? = nil,
   readOnly: Bool? = nil,
   destructive: Bool? = nil,
@@ -28,7 +29,7 @@ Contract: applied to a `struct`, it adds `Tool, Sendable` conformance,
 synthesises a `ToolSchema`, and exposes the user's `execute()` or
 `execute(_:)` method through a `call(arguments:)` dispatcher. Optional
 annotation arguments populate `Tool.annotations` for consumers (for example
-an MCP bridge).
+an MCP bridge). Optional `name` overrides the derived snake_case tool name.
 
 ### Rules
 
@@ -50,6 +51,11 @@ an MCP bridge).
 - The description must be a string literal; the macro errors when it cannot
   extract one.
 - Annotation arguments (all optional; `nil` / omitted means no statement):
+  - `name` — explicit tool name for the schema / providers. When omitted or
+    `nil`, the macro derives snake_case from the type
+    (`SearchAppleDocumentationTool` → `search_apple_documentation`). Must be
+    1 to 64 characters of `A-Z`, `a-z`, `0-9`, `_`, or `-` (the OpenAI /
+    Anthropic function-name rule).
   - `title` — human-readable display name
   - `readOnly` — hint that the tool does not change its environment
   - `destructive` — hint that the tool can make destructive changes (meaningful
@@ -63,7 +69,12 @@ an MCP bridge).
 ```swift
 import SwiftAIHub
 
-@Tool("Echo a city", title: "Echo City", readOnly: true)
+@Tool(
+  "Echo a city",
+  name: "echoCity",
+  title: "Echo City",
+  readOnly: true
+)
 public struct CityTool {
   @Parameter("The city name")
   public var location: String = ""

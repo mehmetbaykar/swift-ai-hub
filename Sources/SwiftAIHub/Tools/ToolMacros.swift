@@ -35,16 +35,20 @@
 /// `@Parameter`/`@Guide`) survive as init-injected dependencies — API keys,
 /// `any LanguageModel`, etc.
 ///
-/// Optional annotation arguments publish a display title and behavior hints
-/// via ``Tool/annotations``. `nil` (or omitting an argument) means no
-/// statement — the consumer applies its own default:
+/// The optional `name` argument sets the tool name. When `name` is omitted or
+/// `nil`, the macro derives a snake_case name from the type
+/// (`SearchAppleDocumentationTool` → `search_apple_documentation`). The other
+/// optional arguments publish a display title and behavior hints via
+/// ``Tool/annotations``. `nil` (or omitting an argument) means no statement —
+/// the consumer applies its own default:
 ///
 ///     @Tool(
-///         "Search the Apple developer documentation",
+///         "Search Apple Developer documentation",
+///         name: "searchAppleDocumentation",
 ///         title: "Search Apple Documentation",
 ///         readOnly: true
 ///     )
-///     struct SearchDocsTool { ... }
+///     struct SearchAppleDocumentationTool { ... }
 @attached(
   member,
   names: named(name), named(description), named(parameters),
@@ -54,6 +58,7 @@
 @attached(extension, conformances: Tool, Sendable)
 public macro Tool(
   _ description: String,
+  name: String? = nil,
   title: String? = nil,
   readOnly: Bool? = nil,
   destructive: Bool? = nil,
