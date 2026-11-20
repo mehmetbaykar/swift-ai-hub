@@ -332,7 +332,7 @@ own `Package.swift`:
 ```swift
 .package(
   url: "https://github.com/mehmetbaykar/swift-ai-hub.git",
-  from: "0.10.1",
+  from: "0.11.0",
   traits: ["MLX", "CoreML", "Llama", "FoundationModels"]
 )
 ```
