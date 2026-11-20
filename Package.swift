@@ -38,7 +38,7 @@ let package = Package(
     .package(url: "https://github.com/ml-explore/mlx-swift-lm", from: "3.33.0"),
     .package(url: "https://github.com/huggingface/swift-transformers", from: "1.4.0"),
     .package(url: "https://github.com/huggingface/swift-huggingface", from: "1.0.1"),
-    .package(url: "https://github.com/mattt/llama.swift", .upToNextMajor(from: "2.10549.0")),
+    .package(url: "https://github.com/mattt/llama.swift", .upToNextMajor(from: "3.0.0")),
     .package(url: "https://github.com/mattt/PartialJSONDecoder", from: "1.0.1"),
     .package(url: "https://github.com/swift-server/async-http-client.git", from: "1.37.0"),
     .package(url: "https://github.com/modelcontextprotocol/swift-sdk", from: "0.12.1"),
